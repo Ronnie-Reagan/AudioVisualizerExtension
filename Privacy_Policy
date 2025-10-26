@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #222;
+  }
+  h1, h2 {
+    color: #111;
+  }
+  h1 {
+    border-bottom: 2px solid #ccc;
+    padding-bottom: 6px;
+  }
+  a {
+    color: #0077cc;
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy</h1>
+<p><strong>Effective Date:</strong>Sunday, October 26, 2025</p>
+<p><strong>Developer:</strong>Don Reagan</p>
+<p><strong>Contact:</strong>donreagan1987@gmail.com</p>
+
+<h2>Overview</h2>
+<p>
+This browser extension is designed to perform a single local function: visualize audio from the user’s current browser tab.
+It does not collect, transmit, store, or share any personal information.
+All processing occurs entirely on the user’s device.
+</p>
+
+<h2>Information Collection and Use</h2>
+<p>
+The extension does <strong>not</strong> collect or process any of the following:
+</p>
+<ul>
+  <li>Personally identifiable information</li>
+  <li>Authentication data or passwords</li>
+  <li>Location data or IP addresses</li>
+  <li>Financial or payment details</li>
+  <li>Browsing history or website content</li>
+  <li>User activity, input, or communications</li>
+</ul>
+
+<p>
+The extension uses only standard browser APIs necessary to perform its function, including:
+</p>
+<ul>
+  <li><code>tabCapture</code> – to obtain the current tab’s audio stream</li>
+  <li><code>offscreen</code> – to render visualizations offscreen for performance</li>
+  <li><code>activeTab</code> – to ensure the extension operates only on the user’s selected tab</li>
+</ul>
+
+<p>
+Captured audio remains in system memory and is <strong>never</strong> sent to external servers.
+</p>
+
+<h2>Data Sharing</h2>
+<p>
+No data is shared with third parties.
+No analytics, telemetry, advertising networks, or tracking scripts are included.
+</p>
+
+<h2>Open Source Transparency</h2>
+<p>
+The full source code is publicly available at:
+<br>
+<a href="https://github.com/Ronnie-Reagan/AudioVisualizerExtension/" target="_blank">
+https://github.com/Ronnie-Reagan/AudioVisualizerExtension/
+</a>
+<br>
+Users may inspect or build the extension themselves to verify these claims.
+</p>
+
+<h2>Children’s Privacy</h2>
+<p>
+This extension is suitable for general audiences and does not knowingly collect data from anyone, including children under 13.
+</p>
+
+<h2>Policy Changes</h2>
+<p>
+If this policy is updated in the future (for example, if online services or optional accounts are introduced),
+all changes will be posted at this same URL with a new effective date.
+</p>
+
+<h2>Contact</h2>
+<p>
+If you have questions or concerns about this policy, contact:<br>
+<strong>donreagan1987@gmail.com</strong>
+</p>
+
+</body>
+</html>
