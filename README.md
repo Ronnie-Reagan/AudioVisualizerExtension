@@ -6,7 +6,7 @@
 - Enter this in the address bar: `chrome://extensions/` (chrome browser)
 - Enable 'Developer Mode' in the top-right of the page
 - Select 'Load Unpacked' on the top-left of the page
-- Select and confrim the unzipped folder
+- Select and confrim the `source` folder inside the unzipped folder
 
 Core logic is located in `visualizer.js`.
 
