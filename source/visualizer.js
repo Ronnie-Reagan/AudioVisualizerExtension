@@ -6,16 +6,12 @@ let analyserR = null;
 let analyser = null;
 let rafId = null;
 let stream = null;
-
-let currentmodeint = 1
-const modes = ["spectrum", "xy", "spectogram"];
-
-
+let currentmodeint = 0
+const modes = ["spectrum", "xy", "spectogram", "pcm"];
 const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
-
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
@@ -33,12 +29,7 @@ window.addEventListener("resize", () => {
 // === TOGGLE ===
 document.addEventListener("keydown", (e) => {
   if (e.key === "m") {
-    if (currentmodeint === 2) {
-      currentmodeint = 0;
-    }
-    else {
-      currentmodeint += 1;
-    }
+    currentmodeint = (currentmodeint + 1) % modes.length;
     console.log("Mode switched to:", modes[currentmodeint]);
     switchMode();
   }
@@ -100,11 +91,17 @@ function startMode() {
     splitter.connect(analyserL, 0);
     splitter.connect(analyserR, 1);
     drawXY();
-  } else {
+  } else if (modes[currentmodeint] === "spectogram") {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawspectograph();
+  }
+  else {
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    drawpcm();
   }
 }
 
@@ -121,14 +118,16 @@ function stopVisualizer(full = false) {
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
-
 // === DRAW ===
 function drawSpectrum() {
-  const { width: w, height: h } = canvas;
   const data = new Uint8Array(analyser.frequencyBinCount);
 
   const loop = () => {
     if (!analyser) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
     analyser.getByteFrequencyData(data);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
@@ -142,22 +141,26 @@ function drawSpectrum() {
       ctx.fillStyle = `rgb(${Math.floor(value * 255)}, 60, 220)`;
       ctx.fillRect(i * barW, h - barH, barW - 1, barH);
     }
+
     rafId = requestAnimationFrame(loop);
   };
   loop();
 }
 
+
 function drawspectograph() {
-  const { width: w, height: h } = canvas;
   const data = new Uint8Array(analyser.frequencyBinCount);
-  let x = 0;
 
   // clear once at start
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const loop = () => {
     if (!analyser) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
     analyser.getByteFrequencyData(data);
 
     // shift old image left by 1 pixel
@@ -175,7 +178,6 @@ function drawspectograph() {
 
     rafId = requestAnimationFrame(loop);
   };
-
   loop();
 }
 
@@ -214,8 +216,11 @@ function drawXY() {
   };
 
   const loop = () => {
+    if (!analyserL || !analyserR) return;
+
     const w = canvas.width;
     const h = canvas.height;
+
     analyserL.getFloatTimeDomainData(dataL);
     analyserR.getFloatTimeDomainData(dataR);
 
@@ -226,10 +231,8 @@ function drawXY() {
 
     ctx.beginPath();
     const len = Math.min(dataL.length, dataR.length);
-
-    // if lastMaxDist exists, double it; otherwise default to 25
     let maxDist = 25;
-    let prevdist = null;
+    let prevdist = 25;
     let prevX = null;
     let prevY = null;
 
@@ -255,6 +258,44 @@ function drawXY() {
 
     ctx.strokeStyle = "#00ff66";
     ctx.lineWidth = 1.0 / scale;
+    ctx.stroke();
+
+    rafId = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+function drawpcm() {
+  const data = new Float32Array(analyser.fftSize); // time-domain buffer
+
+  const loop = () => {
+    if (!analyser) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    analyser.getFloatTimeDomainData(data);
+
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.beginPath();
+
+    const midY = h / 2;
+    const step = w / data.length; // horizontal spacing per sample
+
+    // first point
+    ctx.moveTo(0, midY - data[0] * midY);
+
+    // draw waveform
+    for (let i = 1; i < data.length; i++) {
+      const x = i * step;
+      const y = midY - data[i] * midY; // +1 → top, -1 → bottom
+      ctx.lineTo(x, y);
+    }
+
+    ctx.strokeStyle = "#00ffcc";
+    ctx.lineWidth = 2;
     ctx.stroke();
 
     rafId = requestAnimationFrame(loop);
