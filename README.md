@@ -14,7 +14,7 @@ Switch modes with the **M** key.
 5. Click **Load Unpacked** and select the `source` folder inside the unzipped directory.
 6. The extension will appear in your extensions list and is ready to use.
 
-> Core visualization logic is implemented in [`visualizer.js`](source/visualizer.js).
+> Core visualization logic is implemented in [`audio`](source/audio).
 
 ---
 
