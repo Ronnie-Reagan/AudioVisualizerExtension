@@ -9,11 +9,11 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "/popup_system/popup.html",
     "default_icon": "audiovisualizer_logo_128.png"
   },
   "side_panel": {
-    "default_path": "sidepanel.html"
+    "default_path": "/sidepanel_system/sidepanel.html"
   },
   "icons": {
     "128": "audiovisualizer_logo_128.png"

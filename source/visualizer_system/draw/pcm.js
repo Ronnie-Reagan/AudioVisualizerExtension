@@ -1,10 +1,16 @@
+import { tryGetCanvasContext } from "../shared/canvas.js";
+import { scheduleNextFrame } from "../shared/animationLoop.js";
+
 export function drawPCM(analyser) {
-  const ctx = window.ctx;
+  const ctx = tryGetCanvasContext();
+  if (!ctx) return;
   const data = new Float32Array(analyser.fftSize);
 
   const loop = () => {
     if (!analyser) return;
-    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const canvas = ctx.canvas;
+    const w = canvas.width;
+    const h = canvas.height;
     analyser.getFloatTimeDomainData(data);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
@@ -20,7 +26,7 @@ export function drawPCM(analyser) {
     ctx.strokeStyle = "#00ffcc";
     ctx.lineWidth = 1;
     ctx.stroke();
-    window.rafId = requestAnimationFrame(loop);
+    scheduleNextFrame(loop);
   };
   loop();
 }

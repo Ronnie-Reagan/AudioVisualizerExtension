@@ -1,4 +1,4 @@
-import { initFromStreamId, stopVisualizer } from "./audio/capture.js";
+import { initFromStreamId, stopVisualizer } from "../visualizer_system/audio/capture.js";
 
 let inflight = null;
 

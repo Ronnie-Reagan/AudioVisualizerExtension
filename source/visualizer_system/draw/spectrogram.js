@@ -1,5 +1,9 @@
+import { tryGetCanvasContext } from "../shared/canvas.js";
+import { scheduleNextFrame } from "../shared/animationLoop.js";
+
 export function drawSpectrogram(analyser) {
-  const ctx = window.ctx;
+  const ctx = tryGetCanvasContext();
+  if (!ctx) return;
   const data = new Uint8Array(analyser.frequencyBinCount);
 
   ctx.fillStyle = "#000";
@@ -7,7 +11,9 @@ export function drawSpectrogram(analyser) {
 
   const loop = () => {
     if (!analyser) return;
-    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const canvas = ctx.canvas;
+    const w = canvas.width;
+    const h = canvas.height;
     analyser.getByteFrequencyData(data);
     const frame = ctx.getImageData(1, 0, w - 1, h);
     ctx.putImageData(frame, 0, 0);
@@ -18,7 +24,7 @@ export function drawSpectrogram(analyser) {
       ctx.fillStyle = color;
       ctx.fillRect(w - 1, y, 1, h / data.length + 1);
     }
-    window.rafId = requestAnimationFrame(loop);
+    scheduleNextFrame(loop);
   };
   loop();
 }
