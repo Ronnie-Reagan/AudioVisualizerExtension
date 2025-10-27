@@ -1,29 +1,45 @@
-import { initFromStreamId } from "./audio/capture.js";
+import { initFromStreamId, stopVisualizer } from "./audio/capture.js";
+
+let inflight = null;
 
 async function startTabAudio() {
-  // Ask background for a stream ID for the active tab
-  const res = await chrome.runtime.sendMessage({ type: "REQUEST_STREAM_ID" });
-  if (!res?.ok) {
-    console.error("Failed to get stream ID:", res?.error);
-    return;
-  }
+  if (document.visibilityState !== "visible") return;
+  if (inflight) return inflight;
 
-  // Now request the actual audio stream in sidebar context
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: {
-          chromeMediaSource: "tab",
-          chromeMediaSourceId: res.streamId,
-        },
-      },
-    });
+  inflight = (async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!tab?.id) {
+        console.warn("Sidebar: no active tab to capture");
+        return;
+      }
 
-    // Start your visualizer logic
-    initFromStreamId(res.streamId, stream);
-  } catch (err) {
-    console.error("Sidebar capture error:", err);
-  }
+      const res = await chrome.runtime.sendMessage({
+        type: "REQUEST_STREAM_ID",
+        tabId: tab.id,
+      });
+      if (!res?.ok) {
+        console.error("Failed to get stream ID:", res?.error);
+        return;
+      }
+
+      await initFromStreamId(res.streamId);
+    } catch (err) {
+      console.error("Sidebar capture error:", err);
+    }
+  })().finally(() => {
+    inflight = null;
+  });
+
+  return inflight;
 }
 
 startTabAudio();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    startTabAudio();
+  } else {
+    stopVisualizer(true);
+  }
+});

@@ -4,8 +4,6 @@ import { switchMode, startMode, modes } from "./audio/modes.js";
 let currentModeIndex = 0;
 
 const canvas = document.getElementById("vis");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 window.ctx = canvas.getContext("2d", { willReadFrequently: true });
 
 const params = new URLSearchParams(location.search);
@@ -15,11 +13,6 @@ if (streamId) initFromStreamId(streamId);
 chrome.runtime?.onMessage.addListener(async (msg) => {
   if (msg.type === "START_STREAM") initFromStreamId(msg.streamId);
   if (msg.type === "STOP_STREAM") stopVisualizer(true);
-});
-
-window.addEventListener("resize", () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
 });
 
 document.addEventListener("keydown", (e) => {

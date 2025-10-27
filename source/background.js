@@ -5,10 +5,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       if (msg.type === "REQUEST_STREAM_ID") {
         try {
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (!tab) return sendResponse({ ok: false, error: "No active tab" });
+          let targetTabId = msg.tabId;
+          if (!targetTabId) {
+            const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+            targetTabId = tab?.id;
+          }
+          if (!targetTabId) {
+            sendResponse({ ok: false, error: "No active tab" });
+            return;
+          }
 
-          const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+          const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId });
           sendResponse({ ok: true, streamId });
         } catch (err) {
           console.error("Stream ID request failed:", err);
