@@ -155,6 +155,10 @@ function drawspectograph() {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  let frameCount = 0;
+  let accumulatedTime = 0;
+  let lastTimestamp = performance.now();
+
   const loop = () => {
     if (!analyser) return;
 
@@ -163,9 +167,10 @@ function drawspectograph() {
 
     analyser.getByteFrequencyData(data);
 
-    // shift old image left by 1 pixel
-    const frame = ctx.getImageData(1, 0, w - 1, h);
-    ctx.putImageData(frame, 0, 0);
+    // shift old image left by 1 pixel using GPU-accelerated drawImage
+    if (w > 1) {
+      ctx.drawImage(canvas, 1, 0, w - 1, h, 0, 0, w - 1, h);
+    }
 
     // draw new column at right edge
     for (let i = 0; i < data.length; i++) {
@@ -174,6 +179,20 @@ function drawspectograph() {
       const color = `hsl(${(1 - value) * 240}, 100%, ${value * 60 + 20}%)`;
       ctx.fillStyle = color;
       ctx.fillRect(w - 1, y, 1, h / data.length + 1);
+    }
+
+    const now = performance.now();
+    accumulatedTime += now - lastTimestamp;
+    lastTimestamp = now;
+    frameCount += 1;
+
+    if (frameCount >= 60) {
+      const avgFrameMs = accumulatedTime / frameCount;
+      console.log(
+        `[spectrogram] average frame over ${frameCount} samples: ${avgFrameMs.toFixed(2)}ms`
+      );
+      frameCount = 0;
+      accumulatedTime = 0;
     }
 
     rafId = requestAnimationFrame(loop);
