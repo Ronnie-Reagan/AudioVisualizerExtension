@@ -5,10 +5,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       if (msg.type === "START_CAPTURE") {
         // Close any previous capture windows before starting again
-        const allWindows = await chrome.windows.getAll();
-        for (const w of allWindows) {
-          if (w.title === "Visualizer") await chrome.windows.remove(w.id);
-        }
+        await closeVisualizerWindows();
 
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab) {
@@ -39,10 +36,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
 
       else if (msg.type === "STOP_CAPTURE") {
-        const windows = await chrome.windows.getAll();
-        for (const w of windows) {
-          if (w.title === "Visualizer") await chrome.windows.remove(w.id);
-        }
+        await closeVisualizerWindows();
         sendResponse({ ok: true });
       }
 
@@ -59,6 +53,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // === helper ===
+async function closeVisualizerWindows() {
+  const windows = await chrome.windows.getAll({ populate: true });
+  for (const w of windows) {
+    if (w.title !== "Visualizer") continue;
+
+    await messageWindowTabs(w, { type: "STOP_STREAM" });
+    await delay(100);
+
+    try {
+      await chrome.windows.remove(w.id);
+    } catch (err) {
+      const message = chrome.runtime.lastError?.message || err?.message;
+      console.warn("Failed to remove Visualizer window", message);
+    }
+  }
+}
+
+async function messageWindowTabs(window, message) {
+  if (!window.tabs?.length) return;
+
+  for (const tab of window.tabs) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, message);
+    } catch (err) {
+      const message = chrome.runtime.lastError?.message || err?.message;
+      console.warn(`STOP_STREAM message failed for tab ${tab.id}:`, message);
+    }
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function openRetryWindow(errMsg = "Audio capture failed.") {
   const html = `
     <html>
