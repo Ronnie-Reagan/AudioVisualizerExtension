@@ -3,6 +3,19 @@
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
+      if (msg.type === "REQUEST_STREAM_ID") {
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab) return sendResponse({ ok: false, error: "No active tab" });
+
+          const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+          sendResponse({ ok: true, streamId });
+        } catch (err) {
+          console.error("Stream ID request failed:", err);
+          sendResponse({ ok: false, error: err.message });
+        }
+        return true;
+      }
       if (msg.type === "START_CAPTURE") {
         // Close any previous capture windows before starting again
         const allWindows = await chrome.windows.getAll();
