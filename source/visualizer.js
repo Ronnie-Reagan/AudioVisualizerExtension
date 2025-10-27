@@ -1,5 +1,6 @@
 let audioCtx = null;
 let source = null;
+let baseGain = null;
 let splitter = null;
 let analyserL = null;
 let analyserR = null;
@@ -15,6 +16,13 @@ canvas.height = window.innerHeight;
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
+
+const resumeEvents = ["click", "keydown", "pointerdown", "touchstart"];
+resumeEvents.forEach((eventName) => {
+  window.addEventListener(eventName, () => {
+    attemptResumeAudioContext();
+  });
+});
 
 chrome.runtime?.onMessage.addListener(async (msg) => {
   if (msg.type === "START_STREAM") initFromStreamId(msg.streamId);
@@ -48,57 +56,181 @@ async function initFromStreamId(id) {
       },
     });
     stream = mediaStream;
-    setupAudioContext();
-    startMode();
+    await startMode();
   } catch (err) {
     console.error("Audio capture failed:", err);
   }
 }
 
-// === SETUP CHAIN ===
-function setupAudioContext() {
-  if (audioCtx) audioCtx.close().catch(() => {});
-  audioCtx = new AudioContext();
-  source = audioCtx.createMediaStreamSource(stream);
+// === CONTEXT LIFECYCLE ===
+async function ensureAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new AudioContext();
+  }
+  await attemptResumeAudioContext();
+  return audioCtx;
+}
 
-  const gain = audioCtx.createGain();
-  gain.gain.value = 1.0;
-  source.connect(gain);
-  gain.connect(audioCtx.destination);
+function attemptResumeAudioContext() {
+  if (!audioCtx || audioCtx.state !== "suspended") return Promise.resolve();
+  return audioCtx.resume().catch((err) => {
+    console.warn("Failed to resume audio context:", err);
+  });
+}
+
+async function setupStreamChain() {
+  if (!stream) return null;
+  const context = await ensureAudioContext();
+  if (!context) return null;
+
+  if (source && source.mediaStream !== stream) {
+    try {
+      source.disconnect();
+    } catch (err) {
+      console.warn("Failed to disconnect previous source:", err);
+    }
+    source = null;
+    baseGain = null;
+  }
+
+  if (!source) {
+    source = context.createMediaStreamSource(stream);
+  }
+
+  if (!baseGain) {
+    baseGain = context.createGain();
+    baseGain.gain.value = 1.0;
+    source.connect(baseGain);
+    baseGain.connect(context.destination);
+  }
+
+  return context;
+}
+
+function clearModeNodes() {
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  if (source && analyser) {
+    try {
+      source.disconnect(analyser);
+    } catch (err) {}
+  }
+
+  if (source && splitter) {
+    try {
+      source.disconnect(splitter);
+    } catch (err) {}
+  }
+
+  if (splitter && analyserL) {
+    try {
+      splitter.disconnect(analyserL);
+    } catch (err) {}
+  }
+
+  if (splitter && analyserR) {
+    try {
+      splitter.disconnect(analyserR);
+    } catch (err) {}
+  }
+
+  if (analyser) {
+    try {
+      analyser.disconnect();
+    } catch (err) {}
+    analyser = null;
+  }
+
+  if (analyserL) {
+    try {
+      analyserL.disconnect();
+    } catch (err) {}
+    analyserL = null;
+  }
+
+  if (analyserR) {
+    try {
+      analyserR.disconnect();
+    } catch (err) {}
+    analyserR = null;
+  }
+
+  if (splitter) {
+    try {
+      splitter.disconnect();
+    } catch (err) {}
+    splitter = null;
+  }
+
+  canvas.onwheel = null;
+  canvas.onmousedown = null;
+  canvas.onmouseup = null;
+  canvas.onmousemove = null;
+
+  if (typeof ctx.resetTransform === "function") ctx.resetTransform();
+  else ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function teardownAudioContext() {
+  if (source) {
+    try {
+      source.disconnect();
+    } catch (err) {}
+    source = null;
+  }
+
+  if (baseGain) {
+    try {
+      baseGain.disconnect();
+    } catch (err) {}
+    baseGain = null;
+  }
+
+  if (audioCtx) {
+    const ctxToClose = audioCtx;
+    audioCtx = null;
+    ctxToClose.close().catch(() => {});
+  }
 }
 
 // === MODE CONTROL ===
-function switchMode() {
-  cancelAnimationFrame(rafId);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+async function switchMode() {
+  clearModeNodes();
   if (!stream) return;
-  setupAudioContext();
-  startMode();
+  await startMode();
 }
 
-function startMode() {
+async function startMode() {
+  const context = await setupStreamChain();
+  if (!context || !source) return;
+
   if (modes[currentmodeint] === "spectrum") {
-    analyser = audioCtx.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawSpectrum();
   } else if (modes[currentmodeint] === "xy") {
-    splitter = audioCtx.createChannelSplitter(2);
-    analyserL = audioCtx.createAnalyser();
-    analyserR = audioCtx.createAnalyser();
+    splitter = context.createChannelSplitter(2);
+    analyserL = context.createAnalyser();
+    analyserR = context.createAnalyser();
     analyserL.fftSize = analyserR.fftSize = 2048;
     source.connect(splitter);
     splitter.connect(analyserL, 0);
     splitter.connect(analyserR, 1);
     drawXY();
   } else if (modes[currentmodeint] === "spectogram") {
-    analyser = audioCtx.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawspectograph();
   }
   else {
-    analyser = audioCtx.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawpcm();
@@ -107,14 +239,13 @@ function startMode() {
 
 // === STOP ===
 function stopVisualizer(full = false) {
-  cancelAnimationFrame(rafId);
+  clearModeNodes();
   if (full && stream) {
     stream.getTracks().forEach((t) => t.stop());
     stream = null;
   }
-  if (audioCtx) {
-    audioCtx.close().catch(() => {});
-    audioCtx = null;
+  if (full) {
+    teardownAudioContext();
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
