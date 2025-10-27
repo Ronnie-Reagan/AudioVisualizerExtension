@@ -9,6 +9,7 @@ let rafId = null;
 let stream = null;
 let currentmodeint = 0
 const modes = ["spectrum", "xy", "spectogram", "pcm"];
+const logger = Logger.createLogger("visualizer");
 const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
@@ -86,7 +87,7 @@ chrome.runtime?.onMessage.addListener(async (msg) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "m") {
     currentmodeint = (currentmodeint + 1) % modes.length;
-    console.log("Mode switched to:", modes[currentmodeint]);
+    logger.info("Mode switched", modes[currentmodeint]);
     switchMode();
   }
 });
@@ -106,7 +107,7 @@ async function initFromStreamId(id) {
     stream = mediaStream;
     await startMode();
   } catch (err) {
-    console.error("Audio capture failed:", err);
+    logger.error("Audio capture failed", err);
   }
 }
 

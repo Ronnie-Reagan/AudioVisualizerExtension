@@ -1,6 +1,28 @@
 const start = document.getElementById('start');
 const stop = document.getElementById('stop');
 const status = document.getElementById('status');
+const debugToggle = document.getElementById('debug-toggle');
+const logger = Logger.createLogger('popup');
+
+const DEBUG_KEY = Logger.DEBUG_STORAGE_KEY;
+
+if (debugToggle && chrome?.storage?.local) {
+  chrome.storage.local.get({ [DEBUG_KEY]: Logger.isDebugEnabled() }, result => {
+    debugToggle.checked = Boolean(result[DEBUG_KEY]);
+  });
+
+  debugToggle.addEventListener('change', () => {
+    const enabled = debugToggle.checked;
+    Logger.setDebug(enabled, { persist: true });
+    logger.info('Verbose logging toggled', enabled);
+  });
+
+  chrome.storage.onChanged?.addListener((changes, area) => {
+    if (area === 'local' && Object.prototype.hasOwnProperty.call(changes, DEBUG_KEY)) {
+      debugToggle.checked = Boolean(changes[DEBUG_KEY].newValue);
+    }
+  });
+}
 
 let isCapturing = false;
 
@@ -22,22 +44,15 @@ applyState();
 
 start.onclick = () => {
   status.textContent = 'Starting...';
-  disableForPending();
-
+  logger.info('Start capture requested');
   chrome.runtime.sendMessage({ type: "START_CAPTURE" }, res => {
-    const runtimeError = chrome.runtime.lastError;
-    if (runtimeError) {
-      status.textContent = `Error: ${runtimeError.message}`;
-      isCapturing = false;
-      applyState();
-      return;
-    }
+    if (!res || !res.ok) {
+      status.textContent = 'Error: ' + (res?.error || 'unknown');
+      logger.warn('Start capture failed', res?.error || 'unknown');
+    } else {
+      status.textContent = 'Visualizer running';
+      logger.info('Visualizer running');
 
-    if (!res) {
-      showTimeoutWarning('Start request');
-      isCapturing = false;
-      applyState();
-      return;
     }
 
     if (!res.ok) {
@@ -54,34 +69,7 @@ start.onclick = () => {
 };
 
 stop.onclick = () => {
-  status.textContent = 'Stopping...';
-  disableForPending();
-
-  chrome.runtime.sendMessage({ type: "STOP_CAPTURE" }, res => {
-    const runtimeError = chrome.runtime.lastError;
-    if (runtimeError) {
-      status.textContent = `Error: ${runtimeError.message}`;
-      isCapturing = true;
-      applyState();
-      return;
-    }
-
-    if (!res) {
-      showTimeoutWarning('Stop request');
-      isCapturing = true;
-      applyState();
-      return;
-    }
-
-    if (!res.ok) {
-      status.textContent = 'Error: ' + (res.error || 'unknown');
-      isCapturing = true;
-      applyState();
-      return;
-    }
-
-    status.textContent = 'Stopped';
-    isCapturing = false;
-    applyState();
-  });
+  logger.info('Stop capture requested');
+  chrome.runtime.sendMessage({ type: "STOP_CAPTURE" });
+  status.textContent = 'Stopped';
 };
