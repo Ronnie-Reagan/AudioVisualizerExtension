@@ -24,6 +24,24 @@ if (debugToggle && chrome?.storage?.local) {
   });
 }
 
+let isCapturing = false;
+
+const applyState = () => {
+  start.disabled = isCapturing;
+  stop.disabled = !isCapturing;
+};
+
+const showTimeoutWarning = (action = 'Request') => {
+  status.textContent = `Warning: ${action} timed out. Please try again.`;
+};
+
+const disableForPending = () => {
+  start.disabled = true;
+  stop.disabled = true;
+};
+
+applyState();
+
 start.onclick = () => {
   status.textContent = 'Starting...';
   logger.info('Start capture requested');
@@ -34,7 +52,19 @@ start.onclick = () => {
     } else {
       status.textContent = 'Visualizer running';
       logger.info('Visualizer running');
+
     }
+
+    if (!res.ok) {
+      status.textContent = 'Error: ' + (res.error || 'unknown');
+      isCapturing = false;
+      applyState();
+      return;
+    }
+
+    status.textContent = 'Visualizer running';
+    isCapturing = true;
+    applyState();
   });
 };
 
