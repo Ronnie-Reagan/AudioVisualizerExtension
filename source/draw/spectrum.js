@@ -9,11 +9,11 @@ export function drawSpectrum(analyser) {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
 
-    const barCount = Math.floor(data.length / 2);
+    const barCount = data.length;
     const barW = w / barCount;
     for (let i = 0; i < barCount; i++) {
       const value = data[i] / 255;
-      const barH = value * h;
+      const barH = h * value;
       ctx.fillStyle = `rgb(${Math.floor(value * 255)}, 60, 220)`;
       ctx.fillRect(i * barW, h - barH, barW - 1, barH);
     }

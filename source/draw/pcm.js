@@ -18,7 +18,7 @@ export function drawPCM(analyser) {
       ctx.lineTo(x, y);
     }
     ctx.strokeStyle = "#00ffcc";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.stroke();
     window.rafId = requestAnimationFrame(loop);
   };
