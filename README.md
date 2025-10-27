@@ -24,6 +24,12 @@ Switch modes with the **M** key.
 - Each mode (spectrum, waveform, spectrogram) is drawn on a per-frame loop using requestAnimationFrame.
 - Communication with the active tab uses `chrome.tabCapture`.
 
+### Adding new modes
+
+- Declare a new entry in the `MODE_REGISTRY` object inside [`visualizer.js`](source/visualizer.js).
+- Implement the `{ setup, draw, cleanup }` interface: use `setup` to prepare audio nodes/data and return state, `draw` to start the animation loop, and optionally `cleanup` to tear down listeners or node connections.
+- Add the mode key to the registry in the order you want it to appear—`startMode` automatically reads from the registry so no other wiring is required.
+
 ---
 
 ## Contributing
