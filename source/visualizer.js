@@ -36,6 +36,13 @@ chrome.runtime?.onMessage.addListener(async (msg) => {
   if (msg.type === "STOP_STREAM") stopVisualizer(true);
 });
 
+window.addEventListener("beforeunload", () => stopVisualizer(true));
+
+window.addEventListener("resize", () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
 // === TOGGLE ===
 document.addEventListener("keydown", (e) => {
   if (e.key === "m") {
@@ -249,6 +256,11 @@ function cleanupXYHandlers() {
     window.removeEventListener("pointercancel", xyPointerUpHandler, true);
     xyPointerUpHandler = null;
   }
+  analyser = null;
+  analyserL = null;
+  analyserR = null;
+  splitter = null;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 // === DRAW ===
 function drawSpectrum() {
