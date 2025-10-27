@@ -11,8 +11,61 @@ let currentmodeint = 0
 const modes = ["spectrum", "xy", "spectogram", "pcm"];
 const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+
+const size = {
+  dpr: window.devicePixelRatio || 1,
+  cssWidth: 0,
+  cssHeight: 0,
+};
+
+let dprWatcher = null;
+
+function resizeCanvas() {
+  size.dpr = window.devicePixelRatio || 1;
+  size.cssWidth = window.innerWidth;
+  size.cssHeight = window.innerHeight;
+
+  canvas.style.width = `${size.cssWidth}px`;
+  canvas.style.height = `${size.cssHeight}px`;
+  canvas.width = Math.round(size.cssWidth * size.dpr);
+  canvas.height = Math.round(size.cssHeight * size.dpr);
+
+  ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+}
+
+function handleDevicePixelRatioChange() {
+  resizeCanvas();
+  watchDevicePixelRatio();
+}
+
+function watchDevicePixelRatio() {
+  if (typeof window.matchMedia !== "function") return;
+  if (dprWatcher) {
+    if (typeof dprWatcher.removeEventListener === "function") {
+      dprWatcher.removeEventListener("change", handleDevicePixelRatioChange);
+    } else if (typeof dprWatcher.removeListener === "function") {
+      dprWatcher.removeListener(handleDevicePixelRatioChange);
+    }
+  }
+
+  dprWatcher = window.matchMedia(`(resolution: ${size.dpr}dppx)`);
+  if (typeof dprWatcher.addEventListener === "function") {
+    dprWatcher.addEventListener("change", handleDevicePixelRatioChange);
+  } else if (typeof dprWatcher.addListener === "function") {
+    dprWatcher.addListener(handleDevicePixelRatioChange);
+  }
+}
+
+function clearCanvas() {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+watchDevicePixelRatio();
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
@@ -27,11 +80,6 @@ resumeEvents.forEach((eventName) => {
 chrome.runtime?.onMessage.addListener(async (msg) => {
   if (msg.type === "START_STREAM") initFromStreamId(msg.streamId);
   if (msg.type === "STOP_STREAM") stopVisualizer(true);
-});
-
-window.addEventListener("resize", () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
 });
 
 // === TOGGLE ===
@@ -247,7 +295,7 @@ function stopVisualizer(full = false) {
   if (full) {
     teardownAudioContext();
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  clearCanvas();
 }
 // === DRAW ===
 function drawSpectrum() {
@@ -256,21 +304,24 @@ function drawSpectrum() {
   const loop = () => {
     if (!analyser) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { cssWidth: w, cssHeight: h, dpr } = size;
 
     analyser.getByteFrequencyData(data);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
 
-    const barCount = Math.floor(data.length / 2);
+    const barCount = Math.max(1, Math.floor(data.length / 2));
     const barW = w / barCount;
+    const gap = 1 / dpr;
 
     for (let i = 0; i < barCount; i++) {
       const value = data[i] / 255;
       const barH = value * h;
       ctx.fillStyle = `rgb(${Math.floor(value * 255)}, 60, 220)`;
-      ctx.fillRect(i * barW, h - barH, barW - 1, barH);
+      const x = i * barW;
+      const width = Math.max(barW - gap, 0);
+      ctx.fillRect(x, h - barH, width, barH);
     }
 
     rafId = requestAnimationFrame(loop);
@@ -283,29 +334,40 @@ function drawspectograph() {
   const data = new Uint8Array(analyser.frequencyBinCount);
 
   // clear once at start
+  ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, size.cssWidth, size.cssHeight);
 
   const loop = () => {
     if (!analyser) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
-
     analyser.getByteFrequencyData(data);
 
-    // shift old image left by 1 pixel
-    const frame = ctx.getImageData(1, 0, w - 1, h);
-    ctx.putImageData(frame, 0, 0);
+    const { dpr } = size;
+    const bufferWidth = canvas.width;
+    const bufferHeight = canvas.height;
+    const columnWidth = Math.max(1, Math.round(dpr));
+    const rowHeight = Math.max(1, Math.ceil(bufferHeight / data.length));
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (bufferWidth > columnWidth) {
+      const frame = ctx.getImageData(columnWidth, 0, bufferWidth - columnWidth, bufferHeight);
+      ctx.putImageData(frame, 0, 0);
+    }
 
     // draw new column at right edge
     for (let i = 0; i < data.length; i++) {
       const value = data[i] / 255;
-      const y = h - Math.floor((i / data.length) * h);
+      const y = bufferHeight - Math.floor((i / data.length) * bufferHeight);
       const color = `hsl(${(1 - value) * 240}, 100%, ${value * 60 + 20}%)`;
       ctx.fillStyle = color;
-      ctx.fillRect(w - 1, y, 1, h / data.length + 1);
+      ctx.fillRect(bufferWidth - columnWidth, y, columnWidth, rowHeight);
     }
+
+    ctx.restore();
 
     rafId = requestAnimationFrame(loop);
   };
@@ -325,7 +387,8 @@ function drawXY() {
     lastY = 0;
 
   function applyPanZoom() {
-    ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+    const { dpr } = size;
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, offsetX * dpr, offsetY * dpr);
   }
 
   canvas.onwheel = (e) => {
@@ -349,13 +412,12 @@ function drawXY() {
   const loop = () => {
     if (!analyserL || !analyserR) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { cssWidth: w, cssHeight: h, dpr } = size;
 
     analyserL.getFloatTimeDomainData(dataL);
     analyserR.getFloatTimeDomainData(dataR);
 
-    ctx.resetTransform();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "rgba(0,0,0,0.99)";
     ctx.fillRect(0, 0, w, h);
     applyPanZoom();
@@ -402,11 +464,11 @@ function drawpcm() {
   const loop = () => {
     if (!analyser) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { cssWidth: w, cssHeight: h, dpr } = size;
 
     analyser.getFloatTimeDomainData(data);
 
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
 
