@@ -22,11 +22,68 @@ canvas {
   display: block;
   background: var(--accent);
 }
-#overlay {
+#hint {
   position: fixed;
   top: 8px;
   left: 12px;
   font-size: 14px;
   opacity: 0.7;
   user-select: none;
+}
+
+#error-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 24px;
+  text-align: center;
+}
+
+#error-overlay .overlay-content {
+  max-width: 360px;
+  background: rgba(20, 20, 20, 0.9);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  border-radius: 12px;
+  padding: 24px 32px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+#error-overlay h2 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 20px;
+}
+
+#error-overlay p {
+  margin-top: 0;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+#error-overlay button {
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--fg);
+  color: var(--bg);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+#error-overlay button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+#error-overlay button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.hidden {
+  display: none;
 }

@@ -12,6 +12,69 @@ const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+const hint = document.getElementById("hint");
+const errorOverlay = document.getElementById("error-overlay");
+const errorMessage = document.getElementById("error-message");
+const retryButton = document.getElementById("retry-button");
+
+if (retryButton) {
+  retryButton.addEventListener("click", () => {
+    retryButton.disabled = true;
+    if (errorMessage) errorMessage.textContent = "Retrying capture...";
+
+    if (!chrome?.runtime?.sendMessage) {
+      if (errorMessage) {
+        errorMessage.textContent =
+          "Unable to communicate with the background script. Please restart the extension.";
+      }
+      retryButton.disabled = false;
+      return;
+    }
+
+    chrome.runtime.sendMessage(
+      { type: "START_CAPTURE", reason: "visualizer_retry" },
+      (response) => {
+        if (chrome.runtime.lastError || response?.ok === false) {
+          const failure = chrome.runtime.lastError?.message || response?.error;
+          if (errorMessage) {
+            errorMessage.textContent =
+              (failure ? `Retry failed: ${failure}.` : "Retry failed.") +
+              " You can try again after addressing the issue.";
+          }
+          retryButton.disabled = false;
+        } else if (errorMessage) {
+          errorMessage.textContent =
+            "Retry requested. Please grant the capture prompt if it appears.";
+        }
+      }
+    );
+  });
+}
+
+function showErrorOverlay(meta = {}) {
+  if (hint) hint.classList.add("hidden");
+  if (errorOverlay) errorOverlay.classList.remove("hidden");
+  if (retryButton) retryButton.disabled = false;
+
+  const pieces = [];
+  if (meta.message) pieces.push(meta.message);
+  if (meta.name) pieces.push(`(${meta.name})`);
+  if (meta.constraint) pieces.push(`Constraint: ${meta.constraint}`);
+
+  if (errorMessage) {
+    const detail = pieces.join(' ').trim();
+    errorMessage.textContent =
+      (detail || "We couldn't access the tab audio stream.") +
+      " Please ensure the tab is visible and you've granted audio capture permissions, then try again.";
+  }
+}
+
+function hideErrorOverlay() {
+  if (errorOverlay) errorOverlay.classList.add("hidden");
+  if (errorMessage) errorMessage.textContent = "";
+  if (hint) hint.classList.remove("hidden");
+}
+
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
@@ -48,10 +111,17 @@ async function initFromStreamId(id) {
       },
     });
     stream = mediaStream;
+    hideErrorOverlay();
     setupAudioContext();
     startMode();
   } catch (err) {
-    console.error("Audio capture failed:", err);
+    const structuredError = {
+      name: err?.name,
+      message: err?.message,
+      constraint: err?.constraint || err?.constraintName,
+    };
+    console.error("Audio capture failed", structuredError);
+    showErrorOverlay(structuredError);
   }
 }
 

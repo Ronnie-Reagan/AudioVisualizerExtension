@@ -8,7 +8,14 @@
 </head>
 <body>
 <canvas id="vis"></canvas>
-<div id="overlay">Press <b>M</b> to switch modes</div>
+<div id="hint">Press <b>M</b> to switch modes</div>
+<div id="error-overlay" class="hidden" role="alert">
+  <div class="overlay-content">
+    <h2>Audio capture failed</h2>
+    <p id="error-message"></p>
+    <button id="retry-button" type="button">Retry capture</button>
+  </div>
+</div>
 <script src="resize.js"></script>
 <script src="visualizer.js"></script>
 </body>
