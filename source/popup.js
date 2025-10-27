@@ -1,5 +1,4 @@
 const start = document.getElementById('start');
-const stop = document.getElementById('stop');
 const openPopup = document.getElementById('openPopup');
 const status = document.getElementById('status');
 
@@ -27,9 +26,4 @@ start.onclick = () => {
       status.textContent = 'Visualizer running';
     }
   });
-};
-
-stop.onclick = () => {
-  chrome.runtime.sendMessage({ type: "STOP_CAPTURE" });
-  status.textContent = 'Stopped';
 };
