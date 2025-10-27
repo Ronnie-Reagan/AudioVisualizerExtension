@@ -12,61 +12,14 @@ const modes = ["spectrum", "xy", "spectogram", "pcm"];
 const logger = Logger.createLogger("visualizer");
 const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-const size = {
-  dpr: window.devicePixelRatio || 1,
-  cssWidth: 0,
-  cssHeight: 0,
-};
-
-let dprWatcher = null;
-
-function resizeCanvas() {
-  size.dpr = window.devicePixelRatio || 1;
-  size.cssWidth = window.innerWidth;
-  size.cssHeight = window.innerHeight;
-
-  canvas.style.width = `${size.cssWidth}px`;
-  canvas.style.height = `${size.cssHeight}px`;
-  canvas.width = Math.round(size.cssWidth * size.dpr);
-  canvas.height = Math.round(size.cssHeight * size.dpr);
-
-  ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
-}
-
-function handleDevicePixelRatioChange() {
-  resizeCanvas();
-  watchDevicePixelRatio();
-}
-
-function watchDevicePixelRatio() {
-  if (typeof window.matchMedia !== "function") return;
-  if (dprWatcher) {
-    if (typeof dprWatcher.removeEventListener === "function") {
-      dprWatcher.removeEventListener("change", handleDevicePixelRatioChange);
-    } else if (typeof dprWatcher.removeListener === "function") {
-      dprWatcher.removeListener(handleDevicePixelRatioChange);
-    }
-  }
-
-  dprWatcher = window.matchMedia(`(resolution: ${size.dpr}dppx)`);
-  if (typeof dprWatcher.addEventListener === "function") {
-    dprWatcher.addEventListener("change", handleDevicePixelRatioChange);
-  } else if (typeof dprWatcher.addListener === "function") {
-    dprWatcher.addListener(handleDevicePixelRatioChange);
-  }
-}
-
-function clearCanvas() {
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.restore();
-}
-
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
-watchDevicePixelRatio();
+let xyWheelHandler = null;
+let xyPointerDownHandler = null;
+let xyPointerMoveHandler = null;
+let xyPointerUpHandler = null;
+let xyActivePointerId = null;
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
@@ -223,33 +176,7 @@ function clearModeNodes() {
   else ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-}
-
-function teardownAudioContext() {
-  if (source) {
-    try {
-      source.disconnect();
-    } catch (err) {}
-    source = null;
-  }
-
-  if (baseGain) {
-    try {
-      baseGain.disconnect();
-    } catch (err) {}
-    baseGain = null;
-  }
-
-  if (audioCtx) {
-    const ctxToClose = audioCtx;
-    audioCtx = null;
-    ctxToClose.close().catch(() => {});
-  }
-}
-
-// === MODE CONTROL ===
-async function switchMode() {
-  clearModeNodes();
+  cleanupXYHandlers();
   if (!stream) return;
   await startMode();
 }
@@ -288,7 +215,8 @@ async function startMode() {
 
 // === STOP ===
 function stopVisualizer(full = false) {
-  clearModeNodes();
+  cancelAnimationFrame(rafId);
+  cleanupXYHandlers();
   if (full && stream) {
     stream.getTracks().forEach((t) => t.stop());
     stream = null;
@@ -297,6 +225,30 @@ function stopVisualizer(full = false) {
     teardownAudioContext();
   }
   clearCanvas();
+}
+
+function cleanupXYHandlers() {
+  if (xyActivePointerId !== null) {
+    canvas.releasePointerCapture?.(xyActivePointerId);
+    xyActivePointerId = null;
+  }
+  if (xyWheelHandler) {
+    canvas.removeEventListener("wheel", xyWheelHandler);
+    xyWheelHandler = null;
+  }
+  if (xyPointerDownHandler) {
+    canvas.removeEventListener("pointerdown", xyPointerDownHandler, true);
+    xyPointerDownHandler = null;
+  }
+  if (xyPointerMoveHandler) {
+    canvas.removeEventListener("pointermove", xyPointerMoveHandler);
+    xyPointerMoveHandler = null;
+  }
+  if (xyPointerUpHandler) {
+    window.removeEventListener("pointerup", xyPointerUpHandler, true);
+    window.removeEventListener("pointercancel", xyPointerUpHandler, true);
+    xyPointerUpHandler = null;
+  }
 }
 // === DRAW ===
 function drawSpectrum() {
@@ -392,23 +344,48 @@ function drawXY() {
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, offsetX * dpr, offsetY * dpr);
   }
 
-  canvas.onwheel = (e) => {
+  cleanupXYHandlers();
+
+  xyWheelHandler = (e) => {
     e.preventDefault();
     scale *= e.deltaY < 0 ? 1.1 : 0.9;
   };
-  canvas.onmousedown = (e) => {
+  xyPointerDownHandler = (e) => {
+    xyActivePointerId = e.pointerId;
     isDragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
+    canvas.setPointerCapture?.(e.pointerId);
   };
-  canvas.onmouseup = () => (isDragging = false);
-  canvas.onmousemove = (e) => {
-    if (!isDragging) return;
+  xyPointerMoveHandler = (e) => {
+    if (
+      !isDragging ||
+      (xyActivePointerId !== null && e.pointerId !== xyActivePointerId)
+    )
+      return;
     offsetX += e.clientX - lastX;
     offsetY += e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
   };
+  xyPointerUpHandler = (e) => {
+    const isCancel = e.type === "pointercancel";
+    if (
+      !isCancel &&
+      xyActivePointerId !== null &&
+      e.pointerId !== xyActivePointerId
+    )
+      return;
+    isDragging = false;
+    xyActivePointerId = null;
+    canvas.releasePointerCapture?.(e.pointerId);
+  };
+
+  canvas.addEventListener("wheel", xyWheelHandler, { passive: false });
+  canvas.addEventListener("pointerdown", xyPointerDownHandler, { capture: true });
+  canvas.addEventListener("pointermove", xyPointerMoveHandler);
+  window.addEventListener("pointerup", xyPointerUpHandler, true);
+  window.addEventListener("pointercancel", xyPointerUpHandler, true);
 
   const loop = () => {
     if (!analyserL || !analyserR) return;
