@@ -12,6 +12,12 @@ const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+let xyWheelHandler = null;
+let xyPointerDownHandler = null;
+let xyPointerMoveHandler = null;
+let xyPointerUpHandler = null;
+let xyActivePointerId = null;
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
@@ -71,6 +77,7 @@ function setupAudioContext() {
 function switchMode() {
   cancelAnimationFrame(rafId);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  cleanupXYHandlers();
   if (!stream) return;
   setupAudioContext();
   startMode();
@@ -108,6 +115,7 @@ function startMode() {
 // === STOP ===
 function stopVisualizer(full = false) {
   cancelAnimationFrame(rafId);
+  cleanupXYHandlers();
   if (full && stream) {
     stream.getTracks().forEach((t) => t.stop());
     stream = null;
@@ -117,6 +125,30 @@ function stopVisualizer(full = false) {
     audioCtx = null;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function cleanupXYHandlers() {
+  if (xyActivePointerId !== null) {
+    canvas.releasePointerCapture?.(xyActivePointerId);
+    xyActivePointerId = null;
+  }
+  if (xyWheelHandler) {
+    canvas.removeEventListener("wheel", xyWheelHandler);
+    xyWheelHandler = null;
+  }
+  if (xyPointerDownHandler) {
+    canvas.removeEventListener("pointerdown", xyPointerDownHandler, true);
+    xyPointerDownHandler = null;
+  }
+  if (xyPointerMoveHandler) {
+    canvas.removeEventListener("pointermove", xyPointerMoveHandler);
+    xyPointerMoveHandler = null;
+  }
+  if (xyPointerUpHandler) {
+    window.removeEventListener("pointerup", xyPointerUpHandler, true);
+    window.removeEventListener("pointercancel", xyPointerUpHandler, true);
+    xyPointerUpHandler = null;
+  }
 }
 // === DRAW ===
 function drawSpectrum() {
@@ -197,23 +229,48 @@ function drawXY() {
     ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
   }
 
-  canvas.onwheel = (e) => {
+  cleanupXYHandlers();
+
+  xyWheelHandler = (e) => {
     e.preventDefault();
     scale *= e.deltaY < 0 ? 1.1 : 0.9;
   };
-  canvas.onmousedown = (e) => {
+  xyPointerDownHandler = (e) => {
+    xyActivePointerId = e.pointerId;
     isDragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
+    canvas.setPointerCapture?.(e.pointerId);
   };
-  canvas.onmouseup = () => (isDragging = false);
-  canvas.onmousemove = (e) => {
-    if (!isDragging) return;
+  xyPointerMoveHandler = (e) => {
+    if (
+      !isDragging ||
+      (xyActivePointerId !== null && e.pointerId !== xyActivePointerId)
+    )
+      return;
     offsetX += e.clientX - lastX;
     offsetY += e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
   };
+  xyPointerUpHandler = (e) => {
+    const isCancel = e.type === "pointercancel";
+    if (
+      !isCancel &&
+      xyActivePointerId !== null &&
+      e.pointerId !== xyActivePointerId
+    )
+      return;
+    isDragging = false;
+    xyActivePointerId = null;
+    canvas.releasePointerCapture?.(e.pointerId);
+  };
+
+  canvas.addEventListener("wheel", xyWheelHandler, { passive: false });
+  canvas.addEventListener("pointerdown", xyPointerDownHandler, { capture: true });
+  canvas.addEventListener("pointermove", xyPointerMoveHandler);
+  window.addEventListener("pointerup", xyPointerUpHandler, true);
+  window.addEventListener("pointercancel", xyPointerUpHandler, true);
 
   const loop = () => {
     if (!analyserL || !analyserR) return;
