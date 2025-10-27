@@ -1,5 +1,6 @@
 let audioCtx = null;
 let source = null;
+let baseGain = null;
 let splitter = null;
 let analyserL = null;
 let analyserR = null;
@@ -8,6 +9,7 @@ let rafId = null;
 let stream = null;
 let currentmodeint = 0
 const modes = ["spectrum", "xy", "spectogram", "pcm"];
+const logger = Logger.createLogger("visualizer");
 const canvas = document.getElementById("vis");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 canvas.width = window.innerWidth;
@@ -75,14 +77,29 @@ function hideErrorOverlay() {
   if (hint) hint.classList.remove("hidden");
 }
 
+
+let xyWheelHandler = null;
+let xyPointerDownHandler = null;
+let xyPointerMoveHandler = null;
+let xyPointerUpHandler = null;
+let xyActivePointerId = null;
 const params = new URLSearchParams(location.search);
 const streamId = params.get("streamId");
 if (streamId) initFromStreamId(streamId);
+
+const resumeEvents = ["click", "keydown", "pointerdown", "touchstart"];
+resumeEvents.forEach((eventName) => {
+  window.addEventListener(eventName, () => {
+    attemptResumeAudioContext();
+  });
+});
 
 chrome.runtime?.onMessage.addListener(async (msg) => {
   if (msg.type === "START_STREAM") initFromStreamId(msg.streamId);
   if (msg.type === "STOP_STREAM") stopVisualizer(true);
 });
+
+window.addEventListener("beforeunload", () => stopVisualizer(true));
 
 window.addEventListener("resize", () => {
   canvas.width = window.innerWidth;
@@ -93,7 +110,7 @@ window.addEventListener("resize", () => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "m") {
     currentmodeint = (currentmodeint + 1) % modes.length;
-    console.log("Mode switched to:", modes[currentmodeint]);
+    logger.info("Mode switched", modes[currentmodeint]);
     switchMode();
   }
 });
@@ -122,53 +139,155 @@ async function initFromStreamId(id) {
     };
     console.error("Audio capture failed", structuredError);
     showErrorOverlay(structuredError);
+    await startMode();
+  } catch (err) {
+    logger.error("Audio capture failed", err);
   }
 }
 
-// === SETUP CHAIN ===
-function setupAudioContext() {
-  if (audioCtx) audioCtx.close().catch(() => {});
-  audioCtx = new AudioContext();
-  source = audioCtx.createMediaStreamSource(stream);
-
-  const gain = audioCtx.createGain();
-  gain.gain.value = 1.0;
-  source.connect(gain);
-  gain.connect(audioCtx.destination);
+// === CONTEXT LIFECYCLE ===
+async function ensureAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new AudioContext();
+  }
+  await attemptResumeAudioContext();
+  return audioCtx;
 }
 
-// === MODE CONTROL ===
-function switchMode() {
-  cancelAnimationFrame(rafId);
+function attemptResumeAudioContext() {
+  if (!audioCtx || audioCtx.state !== "suspended") return Promise.resolve();
+  return audioCtx.resume().catch((err) => {
+    console.warn("Failed to resume audio context:", err);
+  });
+}
+
+async function setupStreamChain() {
+  if (!stream) return null;
+  const context = await ensureAudioContext();
+  if (!context) return null;
+
+  if (source && source.mediaStream !== stream) {
+    try {
+      source.disconnect();
+    } catch (err) {
+      console.warn("Failed to disconnect previous source:", err);
+    }
+    source = null;
+    baseGain = null;
+  }
+
+  if (!source) {
+    source = context.createMediaStreamSource(stream);
+  }
+
+  if (!baseGain) {
+    baseGain = context.createGain();
+    baseGain.gain.value = 1.0;
+    source.connect(baseGain);
+    baseGain.connect(context.destination);
+  }
+
+  return context;
+}
+
+function clearModeNodes() {
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  if (source && analyser) {
+    try {
+      source.disconnect(analyser);
+    } catch (err) {}
+  }
+
+  if (source && splitter) {
+    try {
+      source.disconnect(splitter);
+    } catch (err) {}
+  }
+
+  if (splitter && analyserL) {
+    try {
+      splitter.disconnect(analyserL);
+    } catch (err) {}
+  }
+
+  if (splitter && analyserR) {
+    try {
+      splitter.disconnect(analyserR);
+    } catch (err) {}
+  }
+
+  if (analyser) {
+    try {
+      analyser.disconnect();
+    } catch (err) {}
+    analyser = null;
+  }
+
+  if (analyserL) {
+    try {
+      analyserL.disconnect();
+    } catch (err) {}
+    analyserL = null;
+  }
+
+  if (analyserR) {
+    try {
+      analyserR.disconnect();
+    } catch (err) {}
+    analyserR = null;
+  }
+
+  if (splitter) {
+    try {
+      splitter.disconnect();
+    } catch (err) {}
+    splitter = null;
+  }
+
+  canvas.onwheel = null;
+  canvas.onmousedown = null;
+  canvas.onmouseup = null;
+  canvas.onmousemove = null;
+
+  if (typeof ctx.resetTransform === "function") ctx.resetTransform();
+  else ctx.setTransform(1, 0, 0, 1, 0, 0);
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  cleanupXYHandlers();
   if (!stream) return;
-  setupAudioContext();
-  startMode();
+  await startMode();
 }
 
-function startMode() {
+async function startMode() {
+  const context = await setupStreamChain();
+  if (!context || !source) return;
+
   if (modes[currentmodeint] === "spectrum") {
-    analyser = audioCtx.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawSpectrum();
   } else if (modes[currentmodeint] === "xy") {
-    splitter = audioCtx.createChannelSplitter(2);
-    analyserL = audioCtx.createAnalyser();
-    analyserR = audioCtx.createAnalyser();
+    splitter = context.createChannelSplitter(2);
+    analyserL = context.createAnalyser();
+    analyserR = context.createAnalyser();
     analyserL.fftSize = analyserR.fftSize = 2048;
     source.connect(splitter);
     splitter.connect(analyserL, 0);
     splitter.connect(analyserR, 1);
     drawXY();
   } else if (modes[currentmodeint] === "spectogram") {
-    analyser = audioCtx.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawspectograph();
   }
   else {
-    analyser = audioCtx.createAnalyser();
+    analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
     drawpcm();
@@ -178,14 +297,43 @@ function startMode() {
 // === STOP ===
 function stopVisualizer(full = false) {
   cancelAnimationFrame(rafId);
+  cleanupXYHandlers();
   if (full && stream) {
     stream.getTracks().forEach((t) => t.stop());
     stream = null;
   }
-  if (audioCtx) {
-    audioCtx.close().catch(() => {});
-    audioCtx = null;
+  if (full) {
+    teardownAudioContext();
   }
+  clearCanvas();
+}
+
+function cleanupXYHandlers() {
+  if (xyActivePointerId !== null) {
+    canvas.releasePointerCapture?.(xyActivePointerId);
+    xyActivePointerId = null;
+  }
+  if (xyWheelHandler) {
+    canvas.removeEventListener("wheel", xyWheelHandler);
+    xyWheelHandler = null;
+  }
+  if (xyPointerDownHandler) {
+    canvas.removeEventListener("pointerdown", xyPointerDownHandler, true);
+    xyPointerDownHandler = null;
+  }
+  if (xyPointerMoveHandler) {
+    canvas.removeEventListener("pointermove", xyPointerMoveHandler);
+    xyPointerMoveHandler = null;
+  }
+  if (xyPointerUpHandler) {
+    window.removeEventListener("pointerup", xyPointerUpHandler, true);
+    window.removeEventListener("pointercancel", xyPointerUpHandler, true);
+    xyPointerUpHandler = null;
+  }
+  analyser = null;
+  analyserL = null;
+  analyserR = null;
+  splitter = null;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 // === DRAW ===
@@ -195,21 +343,24 @@ function drawSpectrum() {
   const loop = () => {
     if (!analyser) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { cssWidth: w, cssHeight: h, dpr } = size;
 
     analyser.getByteFrequencyData(data);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
 
-    const barCount = Math.floor(data.length / 2);
+    const barCount = Math.max(1, Math.floor(data.length / 2));
     const barW = w / barCount;
+    const gap = 1 / dpr;
 
     for (let i = 0; i < barCount; i++) {
       const value = data[i] / 255;
       const barH = value * h;
       ctx.fillStyle = `rgb(${Math.floor(value * 255)}, 60, 220)`;
-      ctx.fillRect(i * barW, h - barH, barW - 1, barH);
+      const x = i * barW;
+      const width = Math.max(barW - gap, 0);
+      ctx.fillRect(x, h - barH, width, barH);
     }
 
     rafId = requestAnimationFrame(loop);
@@ -222,29 +373,40 @@ function drawspectograph() {
   const data = new Uint8Array(analyser.frequencyBinCount);
 
   // clear once at start
+  ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, size.cssWidth, size.cssHeight);
 
   const loop = () => {
     if (!analyser) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
-
     analyser.getByteFrequencyData(data);
 
-    // shift old image left by 1 pixel
-    const frame = ctx.getImageData(1, 0, w - 1, h);
-    ctx.putImageData(frame, 0, 0);
+    const { dpr } = size;
+    const bufferWidth = canvas.width;
+    const bufferHeight = canvas.height;
+    const columnWidth = Math.max(1, Math.round(dpr));
+    const rowHeight = Math.max(1, Math.ceil(bufferHeight / data.length));
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (bufferWidth > columnWidth) {
+      const frame = ctx.getImageData(columnWidth, 0, bufferWidth - columnWidth, bufferHeight);
+      ctx.putImageData(frame, 0, 0);
+    }
 
     // draw new column at right edge
     for (let i = 0; i < data.length; i++) {
       const value = data[i] / 255;
-      const y = h - Math.floor((i / data.length) * h);
+      const y = bufferHeight - Math.floor((i / data.length) * bufferHeight);
       const color = `hsl(${(1 - value) * 240}, 100%, ${value * 60 + 20}%)`;
       ctx.fillStyle = color;
-      ctx.fillRect(w - 1, y, 1, h / data.length + 1);
+      ctx.fillRect(bufferWidth - columnWidth, y, columnWidth, rowHeight);
     }
+
+    ctx.restore();
 
     rafId = requestAnimationFrame(loop);
   };
@@ -264,37 +426,62 @@ function drawXY() {
     lastY = 0;
 
   function applyPanZoom() {
-    ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+    const { dpr } = size;
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, offsetX * dpr, offsetY * dpr);
   }
 
-  canvas.onwheel = (e) => {
+  cleanupXYHandlers();
+
+  xyWheelHandler = (e) => {
     e.preventDefault();
     scale *= e.deltaY < 0 ? 1.1 : 0.9;
   };
-  canvas.onmousedown = (e) => {
+  xyPointerDownHandler = (e) => {
+    xyActivePointerId = e.pointerId;
     isDragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
+    canvas.setPointerCapture?.(e.pointerId);
   };
-  canvas.onmouseup = () => (isDragging = false);
-  canvas.onmousemove = (e) => {
-    if (!isDragging) return;
+  xyPointerMoveHandler = (e) => {
+    if (
+      !isDragging ||
+      (xyActivePointerId !== null && e.pointerId !== xyActivePointerId)
+    )
+      return;
     offsetX += e.clientX - lastX;
     offsetY += e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
   };
+  xyPointerUpHandler = (e) => {
+    const isCancel = e.type === "pointercancel";
+    if (
+      !isCancel &&
+      xyActivePointerId !== null &&
+      e.pointerId !== xyActivePointerId
+    )
+      return;
+    isDragging = false;
+    xyActivePointerId = null;
+    canvas.releasePointerCapture?.(e.pointerId);
+  };
+
+  canvas.addEventListener("wheel", xyWheelHandler, { passive: false });
+  canvas.addEventListener("pointerdown", xyPointerDownHandler, { capture: true });
+  canvas.addEventListener("pointermove", xyPointerMoveHandler);
+  window.addEventListener("pointerup", xyPointerUpHandler, true);
+  window.addEventListener("pointercancel", xyPointerUpHandler, true);
 
   const loop = () => {
     if (!analyserL || !analyserR) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { cssWidth: w, cssHeight: h, dpr } = size;
 
     analyserL.getFloatTimeDomainData(dataL);
     analyserR.getFloatTimeDomainData(dataR);
 
-    ctx.resetTransform();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "rgba(0,0,0,0.99)";
     ctx.fillRect(0, 0, w, h);
     applyPanZoom();
@@ -341,11 +528,11 @@ function drawpcm() {
   const loop = () => {
     if (!analyser) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { cssWidth: w, cssHeight: h, dpr } = size;
 
     analyser.getFloatTimeDomainData(data);
 
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
 

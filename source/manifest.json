@@ -3,7 +3,7 @@
   "name": "Audio Visualizer",
   "version": "2.1",
   "description": "Captures tab audio, shows visuals, keeps sound playing. Press [M] to change modes.",
-  "permissions": ["tabCapture", "activeTab", "offscreen"],
+  "permissions": ["tabCapture", "activeTab", "offscreen", "storage"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
