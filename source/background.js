@@ -1,4 +1,7 @@
 // background.js — MV3-safe version
+importScripts("logger.js");
+
+const logger = Logger.createLogger("background");
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
@@ -12,6 +15,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab) {
+          logger.warn("No active tab found when starting capture");
           await openRetryWindow("No active tab found.");
           sendResponse({ ok: false, error: "No active tab." });
           return;
@@ -21,7 +25,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         try {
           streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
         } catch (err) {
-          console.error("tabCapture failed:", err.message);
+          logger.error("tabCapture failed", err.message);
           await openRetryWindow("Tab capture failed: " + err.message);
           sendResponse({ ok: false, error: err.message });
           return;
@@ -35,6 +39,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           height: 400
         });
 
+        logger.info("Visualizer window created for stream", streamId);
         sendResponse({ ok: true });
       }
 
@@ -43,14 +48,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         for (const w of windows) {
           if (w.title === "Visualizer") await chrome.windows.remove(w.id);
         }
+        logger.info("Visualizer windows closed on STOP_CAPTURE");
         sendResponse({ ok: true });
       }
 
       else {
+        logger.warn("Unknown message type", msg.type);
         sendResponse({ ok: false, error: "Unknown message" });
       }
     } catch (e) {
-      console.error("START_CAPTURE error:", e);
+      logger.error("START_CAPTURE error", e);
       await openRetryWindow("Error: " + e.message);
       sendResponse({ ok: false, error: e.message });
     }
@@ -96,4 +103,5 @@ async function openRetryWindow(errMsg = "Audio capture failed.") {
     width: 360,
     height: 200
   });
+  logger.info("Retry window opened", errMsg);
 }
