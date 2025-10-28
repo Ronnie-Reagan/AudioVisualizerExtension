@@ -9,6 +9,9 @@ let visualizerWindowId = null;
 let visualizerTabId = null;
 let lastTargetTabId = null;
 let isStartingCapture = false;
+let sidePanelPort = null;
+let sidePanelStreaming = false;
+let sidePanelLastError = null;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
@@ -37,6 +40,40 @@ chrome.windows.onRemoved.addListener((windowId) => {
   }
 });
 
+chrome.runtime.onConnect.addListener((port) => {
+  if (port?.name !== "visualizer-sidepanel") {
+    return;
+  }
+  sidePanelPort = port;
+  sidePanelStreaming = false;
+  sidePanelLastError = null;
+
+  const handleMessage = (msg = {}) => {
+    if (msg.type === "panel:state") {
+      if (typeof msg.streaming === "boolean") {
+        sidePanelStreaming = msg.streaming;
+      }
+      if (msg.error) {
+        sidePanelLastError = msg.error;
+      }
+      return;
+    }
+    if (msg.type === "panel:closed") {
+      sidePanelStreaming = false;
+    }
+  };
+
+  port.onMessage.addListener(handleMessage);
+  port.onDisconnect.addListener(() => {
+    port.onMessage.removeListener(handleMessage);
+    if (sidePanelPort === port) {
+      sidePanelPort = null;
+      sidePanelStreaming = false;
+      sidePanelLastError = null;
+    }
+  });
+});
+
 async function dispatchMessage(msg = {}, sender = {}) {
   switch (msg.type) {
     case "REQUEST_STREAM_ID": {
@@ -44,7 +81,7 @@ async function dispatchMessage(msg = {}, sender = {}) {
       return { streamId };
     }
     case "START_CAPTURE": {
-      await startCaptureFlow(msg.tabId, { lastFocusedWindow: true });
+      await startCaptureFlow(msg.tabId, { lastFocusedWindow: true, requireWindow: true });
       return {};
     }
     case "STOP_CAPTURE": {
@@ -56,7 +93,7 @@ async function dispatchMessage(msg = {}, sender = {}) {
       return {};
     }
     case "SWITCH_TO_ACTIVE_TAB": {
-      await startCaptureFlow(null, { preferCurrentWindow: true });
+      await startCaptureFlow(null, { preferCurrentWindow: true, requireWindow: true });
       return {};
     }
     case "VISUALIZER_READY": {
@@ -69,6 +106,24 @@ async function dispatchMessage(msg = {}, sender = {}) {
     case "RETRY_CAPTURE": {
       await retryCapture();
       return {};
+    }
+    case "GET_RUNTIME_STATE": {
+      return {
+        visualizerWindowId,
+        visualizerTabId,
+        lastTargetTabId,
+        sidePanelOpen: Boolean(sidePanelPort),
+        sidePanelStreaming,
+        sidePanelLastError,
+        isStartingCapture,
+      };
+    }
+    case "REQUEST_CLOSE_SIDE_PANEL": {
+      const { closed, error } = await requestSidePanelClose(msg?.reason);
+      if (error) {
+        throw new Error(error);
+      }
+      return { closed };
     }
     default:
       throw new Error("Unknown message");
@@ -92,6 +147,13 @@ async function startCaptureFlow(tabId, options = {}) {
     return;
   }
 
+  if (options.requireWindow && sidePanelPort) {
+    const err = new Error("Close the side panel before opening the standalone visualizer.");
+    err.code = "SIDE_PANEL_ACTIVE";
+    err.skipRetryWindow = true;
+    throw err;
+  }
+
   isStartingCapture = true;
   try {
     const targetTabId = await resolveTargetTab(tabId, { ...options, allowLast: true });
@@ -107,7 +169,9 @@ async function startCaptureFlow(tabId, options = {}) {
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId });
     await sendStartStream(visualizerTab.id, streamId, targetTabId);
   } catch (err) {
-    await openRetryWindow(err?.message || "Audio capture failed.");
+    if (!err?.skipRetryWindow) {
+      await openRetryWindow(err?.message || "Audio capture failed.");
+    }
     throw err;
   } finally {
     isStartingCapture = false;
@@ -123,7 +187,8 @@ async function retryCapture() {
 
   for (const attempt of attempts) {
     try {
-      await startCaptureFlow(attempt.tabId, attempt.options);
+      const options = { ...attempt.options, requireWindow: true };
+      await startCaptureFlow(attempt.tabId, options);
       return;
     } catch (err) {
       console.warn("Retry attempt failed:", err);
@@ -285,6 +350,44 @@ async function openRetryWindow(message) {
     width: 420,
     height: 240,
     focused: true,
+  });
+}
+
+async function requestSidePanelClose(reason) {
+  if (!sidePanelPort) {
+    sidePanelStreaming = false;
+    return { closed: true };
+  }
+
+  const port = sidePanelPort;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (payload) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      port.onDisconnect.removeListener(onDisconnect);
+      port.onMessage.removeListener(onMessage);
+      resolve(payload);
+    };
+    const timer = setTimeout(() => finalize({ closed: false, error: "Timed out waiting for the side panel to close." }), 1600);
+    const onDisconnect = () => finalize({ closed: true });
+    const onMessage = (msg = {}) => {
+      if (msg.type === "panel:closed") {
+        finalize({ closed: true });
+      } else if (msg.type === "panel:close-failed") {
+        finalize({ closed: false, error: msg.error || "Side panel declined to close." });
+      }
+    };
+
+    port.onDisconnect.addListener(onDisconnect);
+    port.onMessage.addListener(onMessage);
+
+    try {
+      port.postMessage({ type: "panel:close", reason: reason || "standalone-window" });
+    } catch (err) {
+      finalize({ closed: false, error: err?.message || "Failed to notify side panel." });
+    }
   });
 }
 

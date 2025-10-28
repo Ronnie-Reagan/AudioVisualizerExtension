@@ -1,14 +1,220 @@
 <!doctype html>
-<html>
-<body style="font-family:sans-serif;width:260px;padding:12px;background:#101015;color:#f6f6f6">
-  <h3 style="margin:0 0 8px;font-weight:600">Tab Visualizer</h3>
-  <section style="display:flex;flex-direction:column;gap:6px">
-    <button id="start" style="padding:8px;border-radius:6px;border:none;background:#00ffb3;color:#0e1613;font-weight:600;cursor:pointer">Open Visualizer Window</button>
-    <button id="openPopup" style="padding:8px;border-radius:6px;border:none;background:#272736;color:#f1f1f5;font-weight:600;cursor:pointer">Open Side Panel</button>
-    <button id="switch" style="padding:8px;border-radius:6px;border:none;background:#2b6cf6;color:#f5f7ff;font-weight:600;cursor:pointer">Hook To Current Tab</button>
-    <button id="stop" style="padding:8px;border-radius:6px;border:none;background:#3a3a47;color:#f0f0f0;font-weight:600;cursor:pointer">Stop Audio</button>
-  </section>
-  <p id="status" style="margin:10px 0 0;font-size:13px;min-height:18px"></p>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audio Visualizer</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #06070d;
+    --surface: rgba(22, 26, 40, 0.92);
+    --border: rgba(255, 255, 255, 0.06);
+    --fg: #dfe9ff;
+    --muted: rgba(204, 216, 255, 0.6);
+    --accent: #00f5c4;
+    --danger: #ff7373;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  body {
+    margin: 0;
+    padding: 18px 16px 20px;
+    width: 320px;
+    background: radial-gradient(circle at top, #12162a, var(--bg) 70%);
+    color: var(--fg);
+  }
+  .card {
+    background: var(--surface);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    padding: 18px 18px 16px;
+    box-shadow: 0 20px 36px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .card__title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .badge {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: rgba(0, 245, 196, 0.16);
+    color: var(--accent);
+  }
+  .badge--busy {
+    background: rgba(0, 160, 255, 0.24);
+    color: #8fd6ff;
+  }
+  .badge--alert {
+    background: rgba(255, 115, 133, 0.24);
+    color: #ff9aa8;
+  }
+  .badge--idle {
+    background: rgba(0, 245, 196, 0.18);
+    color: var(--accent);
+  }
+  .card__note {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .action {
+    border: none;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.93rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 140ms ease, box-shadow 140ms ease, background 160ms ease;
+    color: #05120f;
+    background: linear-gradient(135deg, rgba(0, 245, 196, 0.85), rgba(0, 160, 255, 0.78));
+    box-shadow: 0 14px 24px rgba(0, 0, 0, 0.28);
+  }
+  .action:disabled {
+    opacity: 0.55;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+  }
+  .action:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+  .action--secondary {
+    background: rgba(24, 30, 52, 0.68);
+    color: var(--fg);
+    box-shadow: none;
+    border: 1px solid rgba(120, 160, 255, 0.18);
+  }
+  .action--ghost {
+    background: rgba(20, 24, 42, 0.55);
+    color: var(--fg);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .status {
+    margin: 0;
+    min-height: 18px;
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .status--error {
+    color: var(--danger);
+  }
+  .prompt {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(4, 6, 10, 0.75);
+    backdrop-filter: blur(8px);
+  }
+  .prompt[hidden] {
+    display: none;
+  }
+  .prompt__card {
+    background: rgba(16, 20, 36, 0.95);
+    border-radius: 14px;
+    border: 1px solid rgba(120, 160, 255, 0.16);
+    padding: 18px;
+    width: 100%;
+    max-width: 280px;
+    box-shadow: 0 24px 44px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .prompt__title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .prompt__body {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .prompt__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .prompt__btn {
+    border: none;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 140ms ease, background 160ms ease;
+  }
+  .prompt__btn.primary {
+    background: linear-gradient(135deg, rgba(0, 245, 196, 0.9), rgba(0, 160, 255, 0.82));
+    color: #041310;
+  }
+  .prompt__btn.subtle {
+    background: rgba(24, 30, 52, 0.8);
+    color: var(--fg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .prompt__btn:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .action,
+    .prompt__btn {
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <header class="card__header">
+      <h1 class="card__title">Audio Visualizer</h1>
+      <span class="badge badge--idle" id="popupBadge">Ready</span>
+    </header>
+    <p class="card__note">Choose how you want to view the live audio visualizer.</p>
+    <section class="actions">
+      <button id="start" class="action">Open Visualizer Window</button>
+      <button id="openPopup" class="action action--secondary">Open Side Panel</button>
+      <button id="switch" class="action action--ghost">Hook To Current Tab</button>
+      <button id="stop" class="action action--ghost">Stop Audio</button>
+    </section>
+    <p id="status" class="status">Idle</p>
+  </div>
+  <div id="conflictPrompt" class="prompt" hidden>
+    <div class="prompt__card">
+      <h2 class="prompt__title">Close side panel?</h2>
+      <p id="promptMessage" class="prompt__body">
+        The visualizer is already open in the side panel. Close it before launching the standalone window?
+      </p>
+      <div class="prompt__actions">
+        <button id="promptCancel" type="button" class="prompt__btn subtle">Cancel</button>
+        <button id="promptConfirm" type="button" class="prompt__btn primary">Close &amp; Continue</button>
+      </div>
+    </div>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

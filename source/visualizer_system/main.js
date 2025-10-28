@@ -25,6 +25,8 @@ let layoutRoot = createPaneNode();
 const paneRegistry = new Map();
 let hoveredPaneId = null;
 let toastTimer = null;
+let pointerInsideApp = false;
+let controlsHideTimer = null;
 
 bootstrap();
 
@@ -44,6 +46,7 @@ function bootstrap() {
   registerRuntimeListeners();
   bindControls();
   bindKeyboardShortcuts();
+  bindPointerLifecycle();
 }
 
 function registerRuntimeListeners() {
@@ -140,6 +143,43 @@ function bindKeyboardShortcuts() {
       updatePaneModeLabel(targetPane, modeName);
       showToast(`Mode → ${formatModeName(modeName)}`);
     }
+  });
+}
+
+function bindPointerLifecycle() {
+  const appShell = document.querySelector(".app-shell");
+  if (appShell) {
+    appShell.addEventListener(
+      "pointerenter",
+      () => {
+        markPointerWithinApp(true);
+      },
+      { passive: true }
+    );
+    appShell.addEventListener(
+      "pointerleave",
+      (event) => {
+        if (event.relatedTarget && appShell.contains(event.relatedTarget)) {
+          return;
+        }
+        markPointerWithinApp(false);
+      },
+      { passive: true }
+    );
+  }
+
+  document.addEventListener(
+    "mouseleave",
+    (event) => {
+      if (event.target === document.documentElement) {
+        markPointerWithinApp(false, { immediate: true });
+      }
+    },
+    { passive: true }
+  );
+
+  window.addEventListener("blur", () => {
+    markPointerWithinApp(false, { immediate: true });
   });
 }
 
@@ -306,6 +346,7 @@ function ensurePane(paneId) {
   const element = document.createElement("div");
   element.className = "visualizer-pane canvas-idle";
   element.dataset.paneId = paneId;
+  element.tabIndex = 0;
 
   const canvas = document.createElement("canvas");
   element.appendChild(canvas);
@@ -411,6 +452,16 @@ function ensurePane(paneId) {
   element.addEventListener("mouseenter", () => {
     setActivePane(paneId);
   });
+  element.addEventListener("focusin", () => {
+    markPointerWithinApp(true);
+    setActivePane(paneId);
+  });
+  element.addEventListener("focusout", (event) => {
+    if (event.relatedTarget && element.contains(event.relatedTarget)) {
+      return;
+    }
+    markPointerWithinApp(false, { immediate: true });
+  });
 
   expandTop.addEventListener("click", () => expandPane(paneId, "top"));
   expandBottom.addEventListener("click", () => expandPane(paneId, "bottom"));
@@ -482,9 +533,21 @@ function createExpandButton(label, paneId, direction) {
 }
 
 function setActivePane(paneId) {
-  hoveredPaneId = paneId;
+  const targetPaneId = paneRegistry.has(paneId) ? paneId : null;
+  hoveredPaneId = targetPaneId;
   for (const pane of paneRegistry.values()) {
-    pane.element.classList.toggle("is-active", pane.id === paneId);
+    pane.element.classList.toggle("is-active", pane.id === targetPaneId);
+  }
+  if (targetPaneId) {
+    markPointerWithinApp(true);
+  }
+}
+
+function clearActivePane() {
+  if (!hoveredPaneId) return;
+  hoveredPaneId = null;
+  for (const pane of paneRegistry.values()) {
+    pane.element.classList.remove("is-active");
   }
 }
 
@@ -649,6 +712,24 @@ function handlePaneCommand(paneId, command) {
   if (command.type === "xy") {
     handleXyCommand(paneId, command);
   }
+}
+
+function markPointerWithinApp(isInside, { immediate = false } = {}) {
+  pointerInsideApp = Boolean(isInside);
+  if (!pointerInsideApp) {
+    scheduleControlsHide(immediate ? 0 : 160);
+    return;
+  }
+  clearTimeout(controlsHideTimer);
+}
+
+function scheduleControlsHide(delay = 160) {
+  clearTimeout(controlsHideTimer);
+  controlsHideTimer = setTimeout(() => {
+    if (!pointerInsideApp) {
+      clearActivePane();
+    }
+  }, delay);
 }
 
 function adjustPaneZoom(paneId, modeName, delta) {
