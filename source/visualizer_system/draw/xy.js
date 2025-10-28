@@ -1,13 +1,9 @@
-import { tryGetCanvasContext } from "../shared/canvas.js";
-import { scheduleNextFrame } from "../shared/animationLoop.js";
+import { createAnimationLoop } from "../shared/animationLoop.js";
 
-export function drawXY(analyserL, analyserR) {
-  const ctx = tryGetCanvasContext();
-  if (!ctx) return;
+export function drawXY(analyserL, analyserR, ctx) {
+  if (!analyserL || !analyserR || !ctx) return () => {};
 
   const canvas = ctx.canvas;
-  canvas.onwheel = canvas.onmousedown = canvas.onmouseup = canvas.onmousemove = null;
-
   const dataL = new Float32Array(analyserL.fftSize);
   const dataR = new Float32Array(analyserR.fftSize);
   let frame = 0;
@@ -29,15 +25,15 @@ export function drawXY(analyserL, analyserR) {
   beamCtx.fillStyle = glow;
   beamCtx.fillRect(0, 0, beamSize, beamSize);
 
-  function ensurePhosphorSize(width, height) {
+  const ensurePhosphorSize = (width, height) => {
     if (phosphor.width === width && phosphor.height === height) return;
     phosphor.width = width;
     phosphor.height = height;
     phosphorCtx.fillStyle = "rgba(0,0,0,1)";
     phosphorCtx.fillRect(0, 0, width, height);
-  }
+  };
 
-  function drawGraticule(width, height) {
+  const drawGraticule = (width, height) => {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.strokeStyle = "rgba(0, 60, 35, 0.35)";
@@ -68,9 +64,9 @@ export function drawXY(analyserL, analyserR) {
     ctx.lineTo(width - border, height / 2);
     ctx.stroke();
     ctx.restore();
-  }
+  };
 
-  const loop = () => {
+  const render = () => {
     if (!analyserL || !analyserR) return;
     const w = canvas.width;
     const h = canvas.height;
@@ -151,9 +147,9 @@ export function drawXY(analyserL, analyserR) {
     ctx.restore();
 
     frame = (frame + 1) >>> 0;
-    scheduleNextFrame(loop);
   };
 
   ensurePhosphorSize(canvas.width, canvas.height);
-  loop();
+  render();
+  return createAnimationLoop(render);
 }

@@ -1,32 +1,324 @@
 :root {
-  --bg: #000;
-  --fg: #00ffa5;
-  --accent: #0a0a0a;
-  --font: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color-scheme: dark;
+  --bg: #050509;
+  --bg-panel: linear-gradient(160deg, #0a1121 0%, #06080f 100%);
+  --fg: #edf9ff;
+  --accent: #10ffb7;
+  --muted: rgba(200, 214, 255, 0.6);
+  --pane-gap: 14px;
+  --pane-radius: 16px;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
+
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
-  color: var(--fg);
-  overflow: hidden;
-  font-family: var(--font);
   height: 100%;
-  width: 100%;
+  background: radial-gradient(circle at top, #10162c, #050509 65%);
+  color: var(--fg);
 }
-canvas {
-  position: fixed;
+
+body {
+  display: flex;
+}
+
+.app-shell {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  gap: 12px;
+  padding: 16px;
+}
+
+.app-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(9, 15, 29, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 10px 16px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  color: rgba(231, 245, 255, 0.88);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(70, 90, 140, 0.2);
+  color: rgba(201, 216, 255, 0.8);
+}
+
+.status-badge::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-active {
+  background: rgba(18, 255, 190, 0.18);
+  color: var(--accent);
+}
+
+.status-error {
+  background: rgba(255, 99, 132, 0.18);
+  color: #ff7a8f;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, opacity 140ms ease;
+  background: rgba(35, 60, 110, 0.35);
+  color: rgba(226, 236, 255, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+.toolbar-btn.primary {
+  background: linear-gradient(135deg, rgba(0, 255, 178, 0.92), rgba(0, 153, 255, 0.78));
+  color: #021815;
+  box-shadow: 0 10px 24px rgba(0, 255, 200, 0.22);
+}
+
+.toolbar-btn.subtle {
+  background: rgba(35, 40, 65, 0.55);
+  color: rgba(226, 236, 255, 0.72);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.toolbar-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.pane-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: rgba(6, 12, 24, 0.65);
+  border-radius: 18px;
+  padding: var(--pane-gap);
+  display: flex;
+}
+
+.pane-root > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pane-split-row,
+.pane-split-column {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  gap: var(--pane-gap);
+}
+
+.pane-split-row {
+  flex-direction: row;
+}
+
+.pane-split-column {
+  flex-direction: column;
+}
+
+.visualizer-pane {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 220px;
+  min-height: 180px;
+  border-radius: var(--pane-radius);
+  overflow: hidden;
+  background: var(--bg-panel);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.visualizer-pane.canvas-idle::after {
+  content: "Waiting for audio";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(230, 242, 255, 0.6);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.visualizer-pane canvas {
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-  background: var(--accent);
 }
-#overlay {
+
+.pane-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.visualizer-pane:hover .pane-controls,
+.visualizer-pane.is-active .pane-controls {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.pane-expand {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 18, 36, 0.72);
+  color: rgba(224, 238, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+.pane-expand:hover {
+  transform: translateY(-1px);
+  background: rgba(0, 255, 178, 0.28);
+}
+
+.pane-expand-top {
+  top: 10%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.pane-expand-bottom {
+  bottom: 10%;
+  left: 50%;
+  transform: translate(-50%, 50%);
+}
+
+.pane-expand-left {
+  left: 10%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.pane-expand-right {
+  right: 10%;
+  top: 50%;
+  transform: translate(50%, -50%);
+}
+
+.pane-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.pane-toolbar button {
+  pointer-events: all;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(14, 18, 35, 0.72);
+  color: rgba(240, 248, 255, 0.88);
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.pane-toolbar button:hover {
+  background: rgba(0, 255, 178, 0.32);
+  color: #021613;
+  transform: translateY(-1px);
+}
+
+.pane-toolbar button[data-action="close"] {
+  padding: 6px;
+  min-width: 32px;
+}
+
+.pane-toolbar button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.app-hint {
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(200, 214, 255, 0.55);
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.app-hint kbd {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 2px 6px;
+  display: inline-block;
+  margin: 0 4px;
+  font-family: inherit;
+}
+
+.toast {
   position: fixed;
-  top: 8px;
-  left: 12px;
-  font-size: 14px;
-  opacity: 0.7;
-  user-select: none;
+  bottom: 22px;
+  right: 22px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(12, 18, 36, 0.92);
+  color: rgba(236, 244, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+  font-size: 0.85rem;
+  backdrop-filter: blur(10px);
 }
+
+.toast[hidden] {
+  display: none;
+}
+*** End of File

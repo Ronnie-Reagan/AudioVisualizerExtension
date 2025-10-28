@@ -1,21 +1,21 @@
-import { tryGetCanvasContext } from "../shared/canvas.js";
-import { scheduleNextFrame } from "../shared/animationLoop.js";
+import { createAnimationLoop } from "../shared/animationLoop.js";
 
-export function drawPCM(analyser) {
-  const ctx = tryGetCanvasContext();
-  if (!ctx) return;
+export function drawPCM(analyser, ctx) {
+  if (!analyser || !ctx) return () => {};
   const data = new Float32Array(analyser.fftSize);
 
-  const loop = () => {
-    if (!analyser) return;
-    const canvas = ctx.canvas;
+  const render = () => {
+    const { canvas } = ctx;
     const w = canvas.width;
     const h = canvas.height;
-    analyser.getFloatTimeDomainData(data);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    ctx.beginPath();
     const midY = h / 2;
+
+    analyser.getFloatTimeDomainData(data);
+
+    ctx.fillStyle = "#03030a";
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.beginPath();
     const step = w / data.length;
     ctx.moveTo(0, midY - data[0] * midY);
     for (let i = 1; i < data.length; i++) {
@@ -23,10 +23,15 @@ export function drawPCM(analyser) {
       const y = midY - data[i] * midY;
       ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = "#00ffcc";
-    ctx.lineWidth = 1;
+
+    ctx.strokeStyle = "#0dffb6";
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = "rgba(13, 255, 182, 0.35)";
     ctx.stroke();
-    scheduleNextFrame(loop);
+    ctx.shadowBlur = 0;
   };
-  loop();
+
+  render();
+  return createAnimationLoop(render);
 }

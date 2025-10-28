@@ -1,10 +1,14 @@
 <!doctype html>
 <html>
-<body style="font-family:sans-serif;width:220px">
-  <h3>Tab Visualizer</h3>
-  <button id="start">Pop-Out</button>
-  <button id="openPopup">Side-Bar</button>
-  <p id="status"></p>
+<body style="font-family:sans-serif;width:260px;padding:12px;background:#101015;color:#f6f6f6">
+  <h3 style="margin:0 0 8px;font-weight:600">Tab Visualizer</h3>
+  <section style="display:flex;flex-direction:column;gap:6px">
+    <button id="start" style="padding:8px;border-radius:6px;border:none;background:#00ffb3;color:#0e1613;font-weight:600;cursor:pointer">Open Visualizer Window</button>
+    <button id="openPopup" style="padding:8px;border-radius:6px;border:none;background:#272736;color:#f1f1f5;font-weight:600;cursor:pointer">Open Side Panel</button>
+    <button id="switch" style="padding:8px;border-radius:6px;border:none;background:#2b6cf6;color:#f5f7ff;font-weight:600;cursor:pointer">Hook To Current Tab</button>
+    <button id="stop" style="padding:8px;border-radius:6px;border:none;background:#3a3a47;color:#f0f0f0;font-weight:600;cursor:pointer">Stop Audio</button>
+  </section>
+  <p id="status" style="margin:10px 0 0;font-size:13px;min-height:18px"></p>
   <script src="popup.js"></script>
 </body>
 </html>

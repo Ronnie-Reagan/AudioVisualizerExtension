@@ -1,17 +1,17 @@
-let rafId = null;
+export function createAnimationLoop(callback) {
+  let rafId = null;
 
-export function scheduleNextFrame(callback) {
-  rafId = requestAnimationFrame(callback);
-  return rafId;
-}
+  const tick = () => {
+    rafId = requestAnimationFrame(tick);
+    callback();
+  };
 
-export function cancelScheduledFrame() {
-  if (rafId !== null) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
-}
+  rafId = requestAnimationFrame(tick);
 
-export function getCurrentFrameId() {
-  return rafId;
+  return () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  };
 }
