@@ -17,6 +17,10 @@ let toastTimer = null;
 bootstrap();
 
 function bootstrap() {
+  if (!paneRoot) {
+    console.error("Visualizer UI missing paneRoot container.");
+    return;
+  }
   renderLayout();
   updatePaneIdleState(!hasActiveStream());
   setStatus("Idle", "idle");
@@ -135,6 +139,7 @@ function stopStream(full = true) {
 }
 
 function renderLayout() {
+  if (!paneRoot) return;
   const seen = new Set();
   const tree = renderNode(layoutRoot, seen);
   if (tree) {
@@ -384,8 +389,11 @@ function expandPaneInLayout(node, paneId, direction) {
   };
 
   const parentEntry = path[path.length - 2];
-  if (parentEntry?.node?.type === "split") {
-    parentEntry.node.children[parentEntry.index] = replacement;
+  if (
+    parentEntry?.node?.type === "split" &&
+    typeof targetEntry.index === "number"
+  ) {
+    parentEntry.node.children[targetEntry.index] = replacement;
   } else {
     layoutRoot = replacement;
   }
@@ -441,3 +449,9 @@ function findPanePath(node, paneId, parent = null, index = null) {
   }
   return null;
 }
+
+window.visualizerUI = Object.freeze({
+  setStatus,
+  updatePaneIdleState,
+  showToast,
+});

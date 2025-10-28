@@ -103,7 +103,7 @@ async function startCaptureFlow(tabId, options = {}) {
     await waitForTabLoad(visualizerTab.id);
     await ensureVisualizerMessagingReady(visualizerTab.id);
 
-    await sendStopStream(visualizerTab.id, { soft: true });
+    await sendStopStream(visualizerTab.id, { full: true });
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId });
     await sendStartStream(visualizerTab.id, streamId, targetTabId);
   } catch (err) {
@@ -330,9 +330,11 @@ function isCapturableTab(tab) {
   if (!tab) return false;
   const url = tab.url ?? "";
   if (!url) return false;
-  if (url.startsWith("chrome://") || url.startsWith("chrome-extension://")) {
+  if (url.startsWith("chrome://")) return false;
+  if (url.startsWith("chrome-extension://")) {
     if (url.startsWith(VISUALIZER_URL) || url.startsWith(RETRY_URL)) return false;
     if (url.includes(chrome.runtime.id)) return false;
+    return false;
   }
   return true;
 }

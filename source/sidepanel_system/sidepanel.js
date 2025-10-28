@@ -2,15 +2,19 @@ import { initFromStreamId, stopVisualizer } from "../visualizer_system/audio/cap
 
 let inflight = null;
 
+const ui = window.visualizerUI ?? {};
+
 async function startTabAudio() {
   if (document.visibilityState !== "visible") return;
   if (inflight) return inflight;
 
   inflight = (async () => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      ui.setStatus?.("Requesting…", "active");
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
-        console.warn("Sidebar: no active tab to capture");
+        ui.setStatus?.("No capturable tab", "error");
+        ui.showToast?.("Select a regular tab to capture", "error");
         return;
       }
 
@@ -19,13 +23,20 @@ async function startTabAudio() {
         tabId: tab.id,
       });
       if (!res?.ok) {
-        console.error("Failed to get stream ID:", res?.error);
+        const message = res?.error || "Failed to get stream";
+        console.error("Failed to get stream ID:", message);
+        ui.setStatus?.("Capture failed", "error");
+        ui.showToast?.(message, "error");
         return;
       }
 
       await initFromStreamId(res.streamId);
+      ui.updatePaneIdleState?.(false);
+      ui.setStatus?.("Streaming", "active");
     } catch (err) {
       console.error("Sidebar capture error:", err);
+      ui.setStatus?.("Capture failed", "error");
+      ui.showToast?.(err?.message || "Unable to capture tab", "error");
     }
   })().finally(() => {
     inflight = null;
@@ -41,5 +52,7 @@ document.addEventListener("visibilitychange", () => {
     startTabAudio();
   } else {
     stopVisualizer(true);
+    ui.updatePaneIdleState?.(true);
+    ui.setStatus?.("Idle", "idle");
   }
 });
