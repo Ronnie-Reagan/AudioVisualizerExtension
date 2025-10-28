@@ -10,12 +10,11 @@ Switch modes with the **M** key.
 1. **Download** this repository as a ZIP and extract it anywhere.  
 2. **Open** your Chromium-based browser.  
 3. Open the extensions page manually by copying and pasting one of these into your address bar:  
-   - `chrome://extensions/` — Google Chrome  
+   - `chrome://extensions/` — Google Chrome | Chromium
    - `brave://extensions/` — Brave  
    - `edge://extensions/` — Microsoft Edge  
    - `opera://extensions/` — Opera  
    - `vivaldi://extensions/` — Vivaldi  
-   - `chrome://extensions/` — Chromium  
    - `epic://extensions/` — Epic Privacy Browser  
    - `browser://extensions/` — Yandex Browser  
 4. Toggle **Developer Mode** in the upper-right corner.  
