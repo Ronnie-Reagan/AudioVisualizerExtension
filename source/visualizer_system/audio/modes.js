@@ -4,8 +4,9 @@ import { drawSpectrum } from "../draw/spectrum.js";
 import { drawSpectrogram } from "../draw/spectrogram.js";
 import { drawXY } from "../draw/xy.js";
 import { drawPCM } from "../draw/pcm.js";
+import { drawHalo } from "../draw/halo.js";
 
-export const modes = ["spectrum", "pcm", "spectrogram", "xy"];
+export const modes = ["spectrum", "pcm", "spectrogram", "halo", "xy"];
 
 const paneState = new Map();
 
@@ -13,12 +14,13 @@ const defaultViewTemplate = Object.freeze({
   spectrum: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
   pcm: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
   spectrogram: Object.freeze({ zoomY: 1, intensity: 1, speed: 1, offsetY: 0 }),
+  halo: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
   xy: Object.freeze({
     scale: 1,
-    persistence: 0.75,
+    persistence: 0.25,
     intensity: 1,
     blanking: 0.12,
-    smoothing: 0.75,
+    smoothing: 0.50,
   }),
 });
 
@@ -27,6 +29,7 @@ function createDefaultViewState() {
     spectrum: { ...defaultViewTemplate.spectrum },
     pcm: { ...defaultViewTemplate.pcm },
     spectrogram: { ...defaultViewTemplate.spectrogram },
+    halo: { ...defaultViewTemplate.halo },
     xy: { ...defaultViewTemplate.xy },
   };
 }
@@ -162,6 +165,10 @@ function startPane(paneId) {
     const analyser = createAnalyser();
     cancelLoop = drawSpectrum(analyser, ctx, view.spectrum);
     disconnectFns = [() => disconnectSafe(source, analyser)];
+  } else if (modeName === "halo") {
+    const analyser = createAnalyser();
+    cancelLoop = drawHalo(analyser, ctx, view.halo);
+    disconnectFns = [() => disconnectSafe(source, analyser)];
   } else if (modeName === "xy") {
     const { splitter, analyserL, analyserR } = createStereoAnalysers();
     cancelLoop = drawXY(analyserL, analyserR, ctx, view.xy);
@@ -243,7 +250,7 @@ function disconnectSafe(node, destination) {
 
 function clampViewForMode(modeName, target) {
   if (!target) return;
-  if (modeName === "spectrum" || modeName === "pcm") {
+  if (modeName === "spectrum" || modeName === "pcm" || modeName === "halo") {
     target.zoomX = clampNumber(target.zoomX, 0.25, 20);
     target.zoomY = clampNumber(target.zoomY, 0.2, 12);
     target.offsetX = clampNumber(target.offsetX, 0, 1);
