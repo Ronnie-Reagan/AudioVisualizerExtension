@@ -1,6 +1,11 @@
 import { createAnimationLoop } from "../shared/animationLoop.js";
 
-export function drawXY(analyserL, analyserR, ctx) {
+const clamp = (value, min, max) => {
+  const numeric = Number.isFinite(value) ? value : min;
+  return Math.min(Math.max(numeric, min), max);
+};
+
+export function drawXY(analyserL, analyserR, ctx, view) {
   if (!analyserL || !analyserR || !ctx) return () => {};
 
   const canvas = ctx.canvas;
@@ -75,16 +80,22 @@ export function drawXY(analyserL, analyserR, ctx) {
     analyserL.getFloatTimeDomainData(dataL);
     analyserR.getFloatTimeDomainData(dataR);
 
+    const scaleFactor = clamp(view?.scale ?? 1, 0.4, 8);
+    const persistence = clamp(view?.persistence ?? 0.75, 0.2, 0.98);
+    const intensity = clamp(view?.intensity ?? 1, 0.2, 3);
+    const blanking = clamp(view?.blanking ?? 0.12, 0.02, 0.6);
+    const smoothing = clamp(view?.smoothing ?? 0.75, 0.2, 0.95);
+
     phosphorCtx.globalCompositeOperation = "source-over";
-    phosphorCtx.fillStyle = "rgba(0, 10, 0, 0.75)";
+    const fadeAlpha = clamp(1 - persistence, 0.02, 0.9);
+    phosphorCtx.fillStyle = `rgba(0, 10, 0, ${fadeAlpha})`;
     phosphorCtx.fillRect(0, 0, w, h);
 
     phosphorCtx.globalCompositeOperation = "lighter";
-    const scale = Math.min(w, h) * 0.45;
-    const blankThreshold = scale * 0.12;
+    const scale = Math.min(w, h) * 0.45 * scaleFactor;
+    const blankThreshold = scale * blanking;
     const blankThresholdSq = blankThreshold * blankThreshold;
     const stride = 2;
-    const smoothing = 0.75;
 
     let spotX = w / 2;
     let spotY = h / 2;
@@ -113,7 +124,8 @@ export function drawXY(analyserL, analyserR, ctx) {
       const jitterX = spotX + jitter;
       const jitterY = spotY + jitter;
 
-      phosphorCtx.globalAlpha = 0.7 + Math.random() * 0.3;
+      const alpha = clamp((0.5 + Math.random() * 0.4) * intensity, 0, 1);
+      phosphorCtx.globalAlpha = alpha;
       phosphorCtx.drawImage(beam, jitterX - beamRadius, jitterY - beamRadius);
 
       prevX = spotX;

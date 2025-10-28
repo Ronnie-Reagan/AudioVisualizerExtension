@@ -14,8 +14,15 @@
         <span id="statusBadge" class="status-badge status-idle">Idle</span>
       </div>
       <div class="toolbar-actions">
-        <button id="hookActive" class="toolbar-btn primary">Hook Active Tab</button>
-        <button id="stopStream" class="toolbar-btn subtle">Stop Audio</button>
+        <div class="toolbar-cluster main-controls">
+          <button id="hookActive" class="toolbar-btn primary">Hook Active Tab</button>
+          <button id="stopStream" class="toolbar-btn subtle">Stop Audio</button>
+        </div>
+        <div class="toolbar-cluster layout-controls">
+          <button id="addPane" class="toolbar-btn ghost" title="Add view beside the active pane">Add View</button>
+          <button id="resetLayout" class="toolbar-btn ghost" title="Reset layout to a single view">Reset Layout</button>
+          <button id="resetViews" class="toolbar-btn ghost" title="Reset zoom/pan for all views">Reset Views</button>
+        </div>
       </div>
     </header>
     <main id="paneRoot" class="pane-root"></main>

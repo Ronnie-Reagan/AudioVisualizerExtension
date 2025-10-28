@@ -9,6 +9,28 @@ export const modes = ["spectrum", "pcm", "spectrogram", "xy"];
 
 const paneState = new Map();
 
+const defaultViewTemplate = Object.freeze({
+  spectrum: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
+  pcm: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
+  spectrogram: Object.freeze({ zoomY: 1, intensity: 1, speed: 1, offsetY: 0 }),
+  xy: Object.freeze({
+    scale: 1,
+    persistence: 0.75,
+    intensity: 1,
+    blanking: 0.12,
+    smoothing: 0.75,
+  }),
+});
+
+function createDefaultViewState() {
+  return {
+    spectrum: { ...defaultViewTemplate.spectrum },
+    pcm: { ...defaultViewTemplate.pcm },
+    spectrogram: { ...defaultViewTemplate.spectrogram },
+    xy: { ...defaultViewTemplate.xy },
+  };
+}
+
 export function registerPane(paneId) {
   if (!paneId) return;
   if (!paneState.has(paneId)) {
@@ -16,7 +38,13 @@ export function registerPane(paneId) {
       modeIndex: 0,
       teardown: null,
       needsStart: false,
+      view: createDefaultViewState(),
     });
+  } else {
+    const state = paneState.get(paneId);
+    if (!state.view) {
+      state.view = createDefaultViewState();
+    }
   }
   startPane(paneId);
 }
@@ -65,6 +93,47 @@ export function getModeName(paneId) {
   return modes[index] ?? modes[0];
 }
 
+export function getViewState(paneId) {
+  return paneState.get(paneId)?.view ?? null;
+}
+
+export function updateViewState(paneId, modeName, mutator) {
+  const state = paneState.get(paneId);
+  if (!state) return null;
+  const view = state.view ?? (state.view = createDefaultViewState());
+  const targetMode = modeName ?? getModeName(paneId);
+  const target = view[targetMode];
+  if (!target) return null;
+  if (typeof mutator === "function") {
+    const result = mutator(target);
+    if (result && typeof result === "object") {
+      Object.assign(target, result);
+    }
+  } else if (mutator && typeof mutator === "object") {
+    Object.assign(target, mutator);
+  }
+  clampViewForMode(targetMode, target);
+  return target;
+}
+
+export function resetViewState(paneId, modeName = null) {
+  const state = paneState.get(paneId);
+  if (!state) return;
+  const view = state.view ?? (state.view = createDefaultViewState());
+  const defaults = createDefaultViewState();
+  if (modeName) {
+    if (defaults[modeName]) {
+      Object.assign(view[modeName], defaults[modeName]);
+      clampViewForMode(modeName, view[modeName]);
+    }
+    return;
+  }
+  for (const key of Object.keys(defaults)) {
+    Object.assign(view[key], defaults[key]);
+    clampViewForMode(key, view[key]);
+  }
+}
+
 function startPane(paneId) {
   const state = paneState.get(paneId);
   if (!state) return;
@@ -85,16 +154,17 @@ function startPane(paneId) {
   clearCanvas(paneId);
 
   const modeName = getModeName(paneId);
+  const view = state.view ?? (state.view = createDefaultViewState());
   let cancelLoop = null;
   let disconnectFns = [];
 
   if (modeName === "spectrum") {
     const analyser = createAnalyser();
-    cancelLoop = drawSpectrum(analyser, ctx);
+    cancelLoop = drawSpectrum(analyser, ctx, view.spectrum);
     disconnectFns = [() => disconnectSafe(source, analyser)];
   } else if (modeName === "xy") {
     const { splitter, analyserL, analyserR } = createStereoAnalysers();
-    cancelLoop = drawXY(analyserL, analyserR, ctx);
+    cancelLoop = drawXY(analyserL, analyserR, ctx, view.xy);
     disconnectFns = [
       () => disconnectSafe(splitter, analyserL),
       () => disconnectSafe(splitter, analyserR),
@@ -102,11 +172,11 @@ function startPane(paneId) {
     ];
   } else if (modeName === "spectrogram") {
     const analyser = createAnalyser();
-    cancelLoop = drawSpectrogram(analyser, ctx);
+    cancelLoop = drawSpectrogram(analyser, ctx, view.spectrogram);
     disconnectFns = [() => disconnectSafe(source, analyser)];
   } else {
     const analyser = createAnalyser();
-    cancelLoop = drawPCM(analyser, ctx);
+    cancelLoop = drawPCM(analyser, ctx, view.pcm);
     disconnectFns = [() => disconnectSafe(source, analyser)];
   }
 
@@ -169,4 +239,32 @@ function disconnectSafe(node, destination) {
   } catch (err) {
     console.warn("Failed to disconnect audio node:", err);
   }
+}
+
+function clampViewForMode(modeName, target) {
+  if (!target) return;
+  if (modeName === "spectrum" || modeName === "pcm") {
+    target.zoomX = clampNumber(target.zoomX, 0.25, 20);
+    target.zoomY = clampNumber(target.zoomY, 0.2, 12);
+    target.offsetX = clampNumber(target.offsetX, 0, 1);
+    target.offsetY = clampNumber(target.offsetY, -1, 1);
+  } else if (modeName === "spectrogram") {
+    target.zoomY = clampNumber(target.zoomY, 0.5, 6);
+    target.intensity = clampNumber(target.intensity, 0.2, 4.5);
+    target.speed = clampNumber(target.speed, 0.25, 5);
+    target.offsetY = clampNumber(target.offsetY, 0, 1);
+  } else if (modeName === "xy") {
+    target.scale = clampNumber(target.scale, 0.4, 8);
+    target.persistence = clampNumber(target.persistence, 0.2, 0.98);
+    target.intensity = clampNumber(target.intensity, 0.2, 3);
+    target.blanking = clampNumber(target.blanking, 0.02, 0.6);
+    target.smoothing = clampNumber(target.smoothing, 0.2, 0.95);
+  }
+}
+
+function clampNumber(value, min, max) {
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  const numeric = Number.isFinite(value) ? value : low;
+  return Math.min(Math.max(numeric, low), high);
 }
