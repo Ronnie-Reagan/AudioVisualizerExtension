@@ -26,9 +26,10 @@ body {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 90vh;
+  max-height:100%;
   gap: 12px;
-  padding: 16px;
+  padding: 14px;
 }
 
 .app-toolbar {
@@ -466,7 +467,7 @@ body[data-resize-orientation="row"] * {
   font-size: 0.75rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: rgba(200, 214, 255, 0.55);
+  color: rgba(200, 214, 255, 0.235);
   text-align: center;
   padding-bottom: 4px;
 }
@@ -474,9 +475,9 @@ body[data-resize-orientation="row"] * {
 .app-hint kbd {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 2px 4px;
   display: inline-block;
-  margin: 0 4px;
+  margin: 2px 2px;
   font-family: inherit;
 }
 
