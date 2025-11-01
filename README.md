@@ -2,7 +2,7 @@
 
 A Chrome extension that captures tab audio and renders real-time visualizations.  
 Switch modes with the **M** key.
-https://chromewebstore.google.com/detail/pmjocachgcbpjkpckfapgcmijopjfcik?utm_source=item-share-cb
+[Official Release Here](https://chromewebstore.google.com/detail/pmjocachgcbpjkpckfapgcmijopjfcik?utm_source=item-share-cb)
 
 ---
 
