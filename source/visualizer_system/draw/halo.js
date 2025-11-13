@@ -2,28 +2,66 @@ import { createAnimationLoop } from "../shared/animationLoop.js";
 
 const TAU = Math.PI * 2;
 const LOG_MAX = Math.log1p(255);
-const BINS_OUT = 270;
+const BINS_OUT = 512;
 const LIFETIME = 1.0;
 const T0 = 6;
 const TT = 28;
-const BASE_R = 0.28;
+const BASE_R = 0.10;
 const ARC_START = (3 * Math.PI) / 4; // bottom-left (canvas coordinates)
 const ARC_SPAN = (Math.PI * 3) / 2; // 270°
-const ANGLE_POWER = 0.25;
+const ANGLE_POWER = 1.0;
 const PARTICLE_THRESHOLD = 0.0125;
-const PARTICLE_EMIT_RATE = 140; // particles/sec at amplitude === 1
+const PARTICLE_EMIT_RATE = 60; // particles/sec at amplitude === 1
 const SPEED_MIN_RATIO = 1.0;
 const SPEED_MAX_RATIO = 2.4;
 const TAIL_MIN_RATIO = 0.08;
-const TAIL_MAX_RATIO = 0.32;
-const THICKNESS_MIN = 1.1;
-const THICKNESS_MAX = 4.5;
+const TAIL_MAX_RATIO = 0.1;
+const THICKNESS_MIN = 0.5;
+const THICKNESS_MAX = 1.5;
 const MAX_PARTICLES = 1200;
-const STAR_COUNT = 270;
+const STAR_COUNT = 720;
 const STAR_SPEED_MIN = 80;
 const STAR_SPEED_MAX = 200;
-const STAR_TWINKLE_MIN = 0.5;
-const STAR_TWINKLE_MAX = 1.3;
+const STAR_TWINKLE_MIN = 0.8;
+const STAR_TWINKLE_MAX = 1.9;
+
+const BIN_BASE_ANGLES = new Float32Array(BINS_OUT);
+const BIN_COS_CACHE = new Float32Array(BINS_OUT);
+const BIN_SIN_CACHE = new Float32Array(BINS_OUT);
+const AMP_LUT_SIZE = 256;
+const AMP_LUT_SCALE = AMP_LUT_SIZE - 1;
+const AMP_POW_090 = new Float32Array(AMP_LUT_SIZE);
+const AMP_POW_085 = new Float32Array(AMP_LUT_SIZE);
+
+const clamp = (value, min, max) => {
+  const lower = Math.min(min, max);
+  const upper = Math.max(min, max);
+  const numeric = Number.isFinite(value) ? value : lower;
+  return Math.min(Math.max(numeric, lower), upper);
+};
+
+const lerp = (a, b, t) => a + (b - a) * t;
+
+for (let i = 0; i < BINS_OUT; i++) {
+  if (BINS_OUT <= 1) {
+    BIN_BASE_ANGLES[i] = ARC_SPAN * 0.5;
+  } else {
+    const normalized = i / (BINS_OUT - 1);
+    BIN_BASE_ANGLES[i] = Math.pow(clamp(normalized, 0, 1), ANGLE_POWER) * ARC_SPAN;
+  }
+}
+
+for (let i = 0; i < AMP_LUT_SIZE; i++) {
+  const value = i / AMP_LUT_SCALE;
+  AMP_POW_090[i] = Math.pow(value, 0.9);
+  AMP_POW_085[i] = Math.pow(value, 0.85);
+}
+
+const sampleLut = (lut, value) => {
+  if (value <= 0) return lut[0];
+  if (value >= 1) return lut[AMP_LUT_SCALE];
+  return lut[Math.floor(value * AMP_LUT_SCALE)];
+};
 
 // Earth texture loading (resolve relative to the module or via runtime URL)
 const EARTH_ASSET_PATH = "visualizer_system/draw/visualizer-assets/halo/earth.png";
@@ -41,15 +79,6 @@ earthImg.onload = () => { earthReady = true; };
 earthImg.onerror = (err) => console.warn("Failed to load halo earth texture:", err);
 earthImg.src = earthImgSrc;
 
-const clamp = (value, min, max) => {
-  const lower = Math.min(min, max);
-  const upper = Math.max(min, max);
-  const numeric = Number.isFinite(value) ? value : lower;
-  return Math.min(Math.max(numeric, lower), upper);
-};
-
-const lerp = (a, b, t) => a + (b - a) * t;
-
 function ensureFrequencyBuffers(analyser, freqData, normData) {
   const targetLength = analyser.frequencyBinCount || 0;
   if (targetLength === freqData.length) {
@@ -58,6 +87,19 @@ function ensureFrequencyBuffers(analyser, freqData, normData) {
   const nextFreq = new Uint8Array(targetLength || 2048);
   const nextNorm = new Float32Array(nextFreq.length);
   return { freqData: nextFreq, normData: nextNorm, changed: true };
+}
+
+function resampleLog(input, output) {
+  const N = input.length;
+  const O = output.length;
+  for (let i = 0; i < O; i++) {
+    const t = i / (O - 1);
+    const src = Math.pow(t, 3.2) * (N - 1); // skews toward highs
+    const idx = Math.floor(src);
+    const frac = src - idx;
+    const next = Math.min(idx + 1, N - 1);
+    output[i] = input[idx] * (1 - frac) + input[next] * frac;
+  }
 }
 
 function resampleLinear(input, output) {
@@ -251,7 +293,7 @@ export function drawHalo(analyser, ctx, view = {}) {
       }
     }
 
-    resampleLinear(normData, resampled);
+    resampleLog(normData, resampled);
 
     let maxAmplitude = 0;
     if (!smoothingInitialized) {
@@ -264,7 +306,7 @@ export function drawHalo(analyser, ctx, view = {}) {
       smoothingInitialized = true;
     } else {
       for (let i = 0; i < BINS_OUT; i++) {
-        smoothed[i] = resampled[i]
+        smoothed[i] = resampled[i];
         if (smoothed[i] > maxAmplitude) {
           maxAmplitude = smoothed[i];
         }
@@ -298,6 +340,11 @@ export function drawHalo(analyser, ctx, view = {}) {
     const maxSpeed = minDim * SPEED_MAX_RATIO;
     const tailMin = minDim * TAIL_MIN_RATIO;
     const tailMax = minDim * TAIL_MAX_RATIO;
+    for (let i = 0; i < BINS_OUT; i++) {
+      const angle = arcStart + BIN_BASE_ANGLES[i];
+      BIN_COS_CACHE[i] = Math.cos(angle);
+      BIN_SIN_CACHE[i] = Math.sin(angle);
+    }
 
     const backgroundGradient = ctx.createLinearGradient(0, 0, 0, height);
     backgroundGradient.addColorStop(0, "rgba(2, 8, 18, 0.95)");
@@ -339,24 +386,23 @@ export function drawHalo(analyser, ctx, view = {}) {
           emissionResidue[i] = 0;
           continue;
         }
-        const normalized = BINS_OUT > 1 ? i / (BINS_OUT - 1) : 0.5;
-        const curved = Math.pow(clamp(normalized, 0, 1), ANGLE_POWER);
-        const angle = arcStart + curved * ARC_SPAN;
-        const dirX = Math.cos(angle);
-        const dirY = Math.sin(angle);
+        const dirX = BIN_COS_CACHE[i];
+        const dirY = BIN_SIN_CACHE[i];
         const emitAmount = amplitude * PARTICLE_EMIT_RATE * delta;
         emissionResidue[i] += emitAmount;
+        const speedFactor = sampleLut(AMP_POW_090, amplitude);
+        const thicknessFactor = sampleLut(AMP_POW_085, amplitude);
+        const tailFactor = clamp(amplitude * 1.1, 0, 1);
         while (emissionResidue[i] >= 1 && particleBudget > 0) {
           emissionResidue[i] -= 1;
           const particle = acquireParticle();
-          const intensity = Math.pow(amplitude, 0.9);
           particle.dirX = dirX;
           particle.dirY = dirY;
           particle.amplitude = amplitude;
-          particle.distance = baseRadius * 2;
-          particle.speed = lerp(minSpeed, maxSpeed, intensity);
-          particle.tail = lerp(tailMin, tailMax, clamp(amplitude * 1.1, 0, 1));
-          particle.thickness = lerp(THICKNESS_MIN, THICKNESS_MAX, Math.pow(amplitude, 0.85));
+          particle.distance = baseRadius * 1.25;
+          particle.speed = lerp(minSpeed, maxSpeed, speedFactor);
+          particle.tail = lerp(tailMin, tailMax, tailFactor);
+          particle.thickness = lerp(THICKNESS_MIN, THICKNESS_MAX, thicknessFactor);
           particle.hue = 212 - amplitude * 170;
           particle.saturation = 58 + amplitude * 38;
           particle.lightness = 38 + amplitude * 36;
