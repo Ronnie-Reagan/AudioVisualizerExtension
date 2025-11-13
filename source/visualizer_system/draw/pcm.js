@@ -25,7 +25,7 @@ export function drawPCM(analyser, ctx, view) {
     const offsetX = clamp(view?.offsetX ?? 0, 0, 1);
     const offsetY = clamp(view?.offsetY ?? 0, -1, 1);
 
-    const visibleSamples = Math.max(64, Math.floor(data.length / zoomX));
+    const visibleSamples = Math.min(w , Math.floor(data.length / zoomX));
     const maxStart = Math.max(0, data.length - visibleSamples);
     const startIndex = Math.max(0, Math.min(maxStart, Math.round(offsetX * maxStart)));
     const step = w / visibleSamples;
@@ -44,7 +44,7 @@ export function drawPCM(analyser, ctx, view) {
     }
 
     ctx.strokeStyle = "#0dffb6";
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1;
     ctx.shadowBlur = 4;
     ctx.shadowColor = "rgba(13, 255, 182, 0.35)";
     ctx.stroke();
