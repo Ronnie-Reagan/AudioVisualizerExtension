@@ -1,10 +1,11 @@
 {
+"update_url": "https://clients2.google.com/service/update2/crx",
+
   "manifest_version": 3,
   "name": "Audio Visualizer",
-  "version": "2.9",
-  "description": "Captures tab audio, shows visuals, keeps sound playing. Press [M] to change modes.",
-  "permissions": ["tabCapture", "activeTab", "storage", "sidePanel"],
-  "host_permissions": ["<all_urls>"],
+  "version": "3.0",
+  "description": "Captures tab audio, shows visuals, keeps sound playing.",
+  "permissions": ["tabCapture", "activeTab", "sidePanel"],
   "background": {
     "service_worker": "background.js"
   },
@@ -17,8 +18,5 @@
   },
   "icons": {
     "128": "audiovisualizer_logo_128.png"
-  },
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }
