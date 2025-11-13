@@ -2,15 +2,28 @@ import { createAnimationLoop } from "../shared/animationLoop.js";
 
 const TAU = Math.PI * 2;
 const LOG_MAX = Math.log1p(255);
-const BINS_OUT = 96;
-const THRESH = 0.55;
-const COOLDOWN = 0.18;
-const LIFETIME = 1.8;
-const W0 = 0.045;
-const WT = 0.38;
+const BINS_OUT = 270;
+const LIFETIME = 1.0;
 const T0 = 6;
 const TT = 28;
 const BASE_R = 0.28;
+const ARC_START = (3 * Math.PI) / 4; // bottom-left (canvas coordinates)
+const ARC_SPAN = (Math.PI * 3) / 2; // 270°
+const ANGLE_POWER = 0.25;
+const PARTICLE_THRESHOLD = 0.0125;
+const PARTICLE_EMIT_RATE = 140; // particles/sec at amplitude === 1
+const SPEED_MIN_RATIO = 1.0;
+const SPEED_MAX_RATIO = 2.4;
+const TAIL_MIN_RATIO = 0.08;
+const TAIL_MAX_RATIO = 0.32;
+const THICKNESS_MIN = 1.1;
+const THICKNESS_MAX = 4.5;
+const MAX_PARTICLES = 1200;
+const STAR_COUNT = 270;
+const STAR_SPEED_MIN = 80;
+const STAR_SPEED_MAX = 200;
+const STAR_TWINKLE_MIN = 0.5;
+const STAR_TWINKLE_MAX = 1.3;
 
 // Earth texture loading (resolve relative to the module or via runtime URL)
 const EARTH_ASSET_PATH = "visualizer_system/draw/visualizer-assets/halo/earth.png";
@@ -116,16 +129,90 @@ export function drawHalo(analyser, ctx, view = {}) {
   let normData = new Float32Array(freqData.length);
   const resampled = new Float32Array(BINS_OUT);
   const smoothed = new Float32Array(BINS_OUT);
-  const prevAmplitudes = new Float32Array(BINS_OUT);
-  const lastFire = new Float64Array(BINS_OUT);
-  lastFire.fill(-Infinity);
-  const pulses = [];
+  const emissionResidue = new Float32Array(BINS_OUT);
+  const particles = [];
+  const particlePool = [];
+  const stars = [];
+  let starWidth = 0;
+  let starHeight = 0;
+
+  const createParticle = () => ({
+    dirX: 0,
+    dirY: 0,
+    amplitude: 0,
+    distance: 0,
+    speed: 0,
+    tail: 0,
+    thickness: 0,
+    hue: 0,
+    saturation: 0,
+    lightness: 0,
+  });
+
+  const acquireParticle = () => particlePool.pop() || createParticle();
+  const recycleParticle = (particle) => {
+    if (!particle) return;
+    particlePool.push(particle);
+  };
+
+  const createStar = () => ({
+    x: 0,
+    y: 0,
+    speed: 0,
+    size: 0,
+    alpha: 0,
+    twinkle: 0,
+    twinkleSpeed: 0,
+  });
+
+  const respawnStar = (
+    star,
+    width,
+    height,
+    centerX,
+    centerY,
+    dirX,
+    dirY,
+    distanceFactor = Math.random()
+  ) => {
+    const spread = Math.max(width, height) * 1.35;
+    const offset = (Math.random() - 0.5) * spread;
+    const baseX = centerX + -dirY * offset;
+    const baseY = centerY + dirX * offset;
+    const distance = spread * (0.2 + distanceFactor);
+    star.x = baseX - dirX * distance;
+    star.y = baseY - dirY * distance;
+    star.speed = STAR_SPEED_MIN + Math.random() * (STAR_SPEED_MAX - STAR_SPEED_MIN);
+    star.size = 0.35 + Math.random() * 1.2;
+    star.alpha = 0.05 + Math.random() * 0.25;
+    star.twinkle = Math.random() * TAU;
+    star.twinkleSpeed = STAR_TWINKLE_MIN + Math.random() * (STAR_TWINKLE_MAX - STAR_TWINKLE_MIN);
+  };
+
+  const ensureStarField = (count, width, height, centerX, centerY, dirX, dirY) => {
+    if (!stars.length || width !== starWidth || height !== starHeight) {
+      stars.length = 0;
+      starWidth = width;
+      starHeight = height;
+    }
+    if (stars.length < count) {
+      const deficit = count - stars.length;
+      for (let i = 0; i < deficit; i++) {
+        const star = createStar();
+        respawnStar(star, width, height, centerX, centerY, dirX, dirY, Math.random());
+        stars.push(star);
+      }
+    } else if (stars.length > count) {
+      stars.length = count;
+    }
+  };
 
   let smoothingInitialized = false;
   let prevTime = performance.now() / 1000;
 
   const render = () => {
     const now = performance.now() / 1000;
+    const delta = Math.min(0.05, now - prevTime);
     prevTime = now;
 
     const { canvas } = ctx;
@@ -149,7 +236,8 @@ export function drawHalo(analyser, ctx, view = {}) {
     if (ensured.changed) {
       smoothingInitialized = false;
       smoothed.fill(0);
-      prevAmplitudes.fill(0);
+      emissionResidue.fill(0);
+      particles.length = 0;
     }
 
     analyser.getByteFrequencyData(freqData);
@@ -168,7 +256,6 @@ export function drawHalo(analyser, ctx, view = {}) {
     let maxAmplitude = 0;
     if (!smoothingInitialized) {
       smoothed.set(resampled);
-      prevAmplitudes.set(resampled);
       for (let i = 0; i < BINS_OUT; i++) {
         if (smoothed[i] > maxAmplitude) {
           maxAmplitude = smoothed[i];
@@ -177,9 +264,7 @@ export function drawHalo(analyser, ctx, view = {}) {
       smoothingInitialized = true;
     } else {
       for (let i = 0; i < BINS_OUT; i++) {
-        const previous = smoothed[i];
-        prevAmplitudes[i] = previous;
-        smoothed[i] = previous * 0.7 + resampled[i] * 0.3;
+        smoothed[i] = resampled[i]
         if (smoothed[i] > maxAmplitude) {
           maxAmplitude = smoothed[i];
         }
@@ -189,109 +274,144 @@ export function drawHalo(analyser, ctx, view = {}) {
     const zoom = clamp(view?.zoomX ?? 1, 0.4, 4);
     const radialScale = clamp(view?.zoomY ?? 1, 0.4, 3);
     const offsetY = clamp(view?.offsetY ?? 0, -1, 1);
+    const binRotationBase = Number.isFinite(view?.binRotation) ? view.binRotation : 0;
+    const binSpin = Number.isFinite(view?.binSpin) ? view.binSpin : 0;
+    const binRotation = binRotationBase + binSpin * now;
+    const earthRotationBase = Number.isFinite(view?.earthRotation) ? view.earthRotation : 0;
+    const earthSpin = Number.isFinite(view?.earthSpin) ? view.earthSpin : 0;
+    const earthRotation = earthRotationBase + earthSpin * now;
 
     const minDim = Math.min(width, height);
+    const diag = Math.hypot(width, height);
     const baseRadius = Math.max(18, minDim * BASE_R * zoom);
     const centerX = width / 2;
     const centerY = height / 2 + offsetY * height * 0.2;
     const maxRadius = baseRadius * 1.02 + (T0 + TT * LIFETIME) * radialScale;
+    const maxParticleDistance = diag * 0.85 + baseRadius;
+    const arcStart = ARC_START + binRotation;
+    const arcMidAngle = arcStart - ARC_SPAN / 2;
+    const windAngle = arcMidAngle + Math.PI;
+    const windDirX = Math.cos(windAngle);
+    const windDirY = Math.sin(windAngle);
+    const starCount = Math.max(32, Math.floor(STAR_COUNT * clamp(radialScale, 0.6, 1.4)));
+    const minSpeed = minDim * SPEED_MIN_RATIO;
+    const maxSpeed = minDim * SPEED_MAX_RATIO;
+    const tailMin = minDim * TAIL_MIN_RATIO;
+    const tailMax = minDim * TAIL_MAX_RATIO;
 
-    ctx.fillStyle = "rgba(3, 6, 12, 0.92)";
+    const backgroundGradient = ctx.createLinearGradient(0, 0, 0, height);
+    backgroundGradient.addColorStop(0, "rgba(2, 8, 18, 0.95)");
+    backgroundGradient.addColorStop(0.7, "rgba(0, 3, 8, 0.98)");
+    backgroundGradient.addColorStop(1, "rgba(0, 0, 0, 1)");
+    ctx.fillStyle = backgroundGradient;
     ctx.fillRect(0, 0, width, height);
 
-    if (hasEnergy) {
+    ensureStarField(starCount, width, height, centerX, centerY, windDirX, windDirY);
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = "rgb(150, 190, 255)";
+    const starBoundary = Math.max(width, height) * 0.85;
+    for (let i = 0; i < stars.length; i++) {
+      const star = stars[i];
+      star.x += windDirX * star.speed * delta;
+      star.y += windDirY * star.speed * delta;
+      star.twinkle += star.twinkleSpeed * delta;
+      const twinkle = 0.55 + 0.45 * Math.sin(star.twinkle);
+      ctx.globalAlpha = star.alpha * twinkle;
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, star.size, 0, TAU);
+      ctx.fill();
+      const relX = star.x - centerX;
+      const relY = star.y - centerY;
+      const along = relX * windDirX + relY * windDirY;
+      const perp = relX * -windDirY + relY * windDirX;
+      if (along > starBoundary || along < -starBoundary || Math.abs(perp) > starBoundary) {
+        respawnStar(star, width, height, centerX, centerY, windDirX, windDirY);
+      }
+    }
+    ctx.restore();
+
+    let particleBudget = Math.max(0, MAX_PARTICLES - particles.length);
+    if (hasEnergy && particleBudget > 0) {
       for (let i = 0; i < BINS_OUT; i++) {
         const amplitude = clamp(smoothed[i], 0, 1);
-        const previously = prevAmplitudes[i];
-        if (previously >= THRESH || amplitude < THRESH) continue;
-        if (now - lastFire[i] < COOLDOWN) continue;
-        lastFire[i] = now;
-        const position = BINS_OUT > 1 ? i / (BINS_OUT - 1) : 0.5;
-        pulses.push({
-          position,
-          amp: amplitude,
-          born: now,
-        });
+        if (amplitude < PARTICLE_THRESHOLD) {
+          emissionResidue[i] = 0;
+          continue;
+        }
+        const normalized = BINS_OUT > 1 ? i / (BINS_OUT - 1) : 0.5;
+        const curved = Math.pow(clamp(normalized, 0, 1), ANGLE_POWER);
+        const angle = arcStart + curved * ARC_SPAN;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        const emitAmount = amplitude * PARTICLE_EMIT_RATE * delta;
+        emissionResidue[i] += emitAmount;
+        while (emissionResidue[i] >= 1 && particleBudget > 0) {
+          emissionResidue[i] -= 1;
+          const particle = acquireParticle();
+          const intensity = Math.pow(amplitude, 0.9);
+          particle.dirX = dirX;
+          particle.dirY = dirY;
+          particle.amplitude = amplitude;
+          particle.distance = baseRadius * 2;
+          particle.speed = lerp(minSpeed, maxSpeed, intensity);
+          particle.tail = lerp(tailMin, tailMax, clamp(amplitude * 1.1, 0, 1));
+          particle.thickness = lerp(THICKNESS_MIN, THICKNESS_MAX, Math.pow(amplitude, 0.85));
+          particle.hue = 212 - amplitude * 170;
+          particle.saturation = 58 + amplitude * 38;
+          particle.lightness = 38 + amplitude * 36;
+          particles.push(particle);
+          particleBudget--;
+        }
+        if (particleBudget <= 0) break;
       }
+    } else if (!hasEnergy) {
+      emissionResidue.fill(0);
     }
 
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
 
     let writeIndex = 0;
-    for (let i = 0; i < pulses.length; i++) {
-      const pulse = pulses[i];
-      const age = now - pulse.born;
-      if (age >= LIFETIME) {
+    for (let i = 0; i < particles.length; i++) {
+      const particle = particles[i];
+      particle.distance += particle.speed * delta;
+      if (particle.distance - particle.tail > maxParticleDistance) {
+        recycleParticle(particle);
         continue;
       }
 
-      const fade = 1 - age / LIFETIME;
-      const widthBase = W0 + WT * age;
-      const verticalProgress = clamp(pulse.position, 0, 1);
-      const verticalOffset = (0.5 - verticalProgress) * baseRadius * 2;
-      const lateral = Math.sqrt(Math.max(0, baseRadius * baseRadius - verticalOffset * verticalOffset));
-      const spread = (T0 + TT * age) * radialScale * (0.4 + pulse.amp * 0.6);
-      const outerHalf = spread * 0.5;
-      const innerHalf = Math.max(outerHalf * 0.18, outerHalf * widthBase * 0.55);
+      const startDist = Math.max(0, particle.distance - particle.tail);
+      const endDist = particle.distance;
+      const startX = centerX + particle.dirX * startDist;
+      const startY = centerY + particle.dirY * startDist;
+      const endX = centerX + particle.dirX * endDist;
+      const endY = centerY + particle.dirY * endDist;
 
-      const hue = 206 - Math.min(1, pulse.amp) * 170;
-      const saturation = 58 + pulse.amp * 40;
-      const lightness = 32 + pulse.amp * 46;
-      const alpha = clamp(fade * (0.25 + pulse.amp * 0.55), 0, 1);
+      const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+      const headAlpha = clamp(0.12 + particle.amplitude * 0.65, 0, 1);
+      gradient.addColorStop(
+        0,
+        `hsla(${particle.hue}, ${particle.saturation}%, ${particle.lightness}%, ${headAlpha})`
+      );
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
 
-      ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+      ctx.lineWidth = particle.thickness;
+      ctx.strokeStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
 
-      const startRadius = baseRadius * (0.06 + widthBase * 0.45);
-      const maxReach = Math.max(width, height);
-      const distanceToEdge = (sx, sy, dx, dy) => {
-        const eps = 1e-5;
-        const candidates = [];
-        if (Math.abs(dx) > eps) {
-          const tx = dx > 0 ? (width - sx) / dx : (0 - sx) / dx;
-          if (tx > 0) candidates.push(tx);
-        }
-        if (Math.abs(dy) > eps) {
-          const ty = dy > 0 ? (height - sy) / dy : (0 - sy) / dy;
-          if (ty > 0) candidates.push(ty);
-        }
-        if (!candidates.length) return maxReach;
-        return Math.min(...candidates);
-      };
-      const directionScale = clamp(0.65 + pulse.amp * 0.35, 0.1, 1);
-
-      for (let side = -1; side <= 1; side += 2) {
-        const radiusX = side * lateral;
-        const dirLength = Math.hypot(radiusX, verticalOffset) || 1;
-        const dirX = radiusX / dirLength;
-        const dirY = verticalOffset / dirLength;
-        const normalX = -dirY;
-        const normalY = dirX;
-
-        const startX = centerX + dirX * startRadius;
-        const startY = centerY + dirY * startRadius;
-        const edgeDistance = distanceToEdge(startX, startY, dirX, dirY);
-        const length = edgeDistance * directionScale;
-        const endX = startX + dirX * length;
-        const endY = startY + dirY * length;
-
-        ctx.beginPath();
-        ctx.moveTo(startX + normalX * innerHalf, startY + normalY * innerHalf);
-        ctx.lineTo(endX + normalX * outerHalf, endY + normalY * outerHalf);
-        ctx.lineTo(endX - normalX * outerHalf, endY - normalY * outerHalf);
-        ctx.lineTo(startX - normalX * innerHalf, startY - normalY * innerHalf);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      pulses[writeIndex++] = pulse;
+      particles[writeIndex++] = particle;
     }
-    pulses.length = writeIndex;
+    particles.length = writeIndex;
     ctx.restore();
 
     drawBase(ctx, centerX, centerY, baseRadius, maxRadius, maxAmplitude);
 
-    if (!hasEnergy && pulses.length === 0) {
+    if (!hasEnergy && particles.length === 0) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.strokeStyle = "rgba(120, 150, 220, 0.25)";
@@ -305,20 +425,12 @@ export function drawHalo(analyser, ctx, view = {}) {
 
     if (earthReady) {
       ctx.save();
-      ctx.globalCompositeOperation = "source-over"; // draw normally, above inner glow
-
-      // Earth size relative to radius — adjustment needed
+      ctx.globalCompositeOperation = "source-over";
       const earthRadius = baseRadius * 1.25;
       const size = earthRadius * 2;
-
-      ctx.drawImage(
-        earthImg,
-        centerX - earthRadius,
-        centerY - earthRadius,
-        size,
-        size
-      );
-
+      ctx.translate(centerX, centerY);
+      ctx.rotate(earthRotation);
+      ctx.drawImage(earthImg, -earthRadius, -earthRadius, size, size);
       ctx.restore();
     }
   };

@@ -14,7 +14,16 @@ const defaultViewTemplate = Object.freeze({
   spectrum: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
   pcm: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
   spectrogram: Object.freeze({ zoomY: 1, intensity: 1, speed: 1, offsetY: 0 }),
-  halo: Object.freeze({ zoomX: 1, zoomY: 1, offsetX: 0, offsetY: 0 }),
+  halo: Object.freeze({
+    zoomX: 1,
+    zoomY: 1,
+    offsetX: 0,
+    offsetY: 0,
+    binRotation: 0,
+    binSpin: 0,
+    earthRotation: 0,
+    earthSpin: 0,
+  }),
   xy: Object.freeze({
     scale: 1,
     persistence: 0.25,
@@ -23,6 +32,9 @@ const defaultViewTemplate = Object.freeze({
     smoothing: 0.50,
   }),
 });
+
+const HALO_ROTATION_LIMIT = Math.PI * 12;
+const HALO_SPIN_LIMIT = Math.PI * 2;
 
 function createDefaultViewState() {
   return {
@@ -250,11 +262,20 @@ function disconnectSafe(node, destination) {
 
 function clampViewForMode(modeName, target) {
   if (!target) return;
-  if (modeName === "spectrum" || modeName === "pcm" || modeName === "halo") {
+  if (modeName === "spectrum" || modeName === "pcm") {
     target.zoomX = clampNumber(target.zoomX, 0.25, 20);
     target.zoomY = clampNumber(target.zoomY, 0.2, 12);
     target.offsetX = clampNumber(target.offsetX, 0, 1);
     target.offsetY = clampNumber(target.offsetY, -1, 1);
+  } else if (modeName === "halo") {
+    target.zoomX = clampNumber(target.zoomX, 0.25, 20);
+    target.zoomY = clampNumber(target.zoomY, 0.2, 12);
+    target.offsetX = clampNumber(target.offsetX, 0, 1);
+    target.offsetY = clampNumber(target.offsetY, -1, 1);
+    target.binRotation = clampNumber(target.binRotation, -HALO_ROTATION_LIMIT, HALO_ROTATION_LIMIT);
+    target.binSpin = clampNumber(target.binSpin, -HALO_SPIN_LIMIT, HALO_SPIN_LIMIT);
+    target.earthRotation = clampNumber(target.earthRotation, -HALO_ROTATION_LIMIT, HALO_ROTATION_LIMIT);
+    target.earthSpin = clampNumber(target.earthSpin, -HALO_SPIN_LIMIT, HALO_SPIN_LIMIT);
   } else if (modeName === "spectrogram") {
     target.zoomY = clampNumber(target.zoomY, 0.5, 6);
     target.intensity = clampNumber(target.intensity, 0.2, 4.5);
