@@ -53,7 +53,7 @@ Expect more modes to be added as time goes on; try not to be upset if your favou
 5. Click **Load Unpacked** and select the `source` folder inside the unzipped directory.
 6. The extension will appear in your extensions list and be ready to use.
 
-> Core visualization logic is implemented in [`visualizer_system/audio`](source/visualizer_system/audio).
+> Core visualization logic is implemented in [`visualizer_system/draw`](source/visualizer_system/draw).
 
 ---
 

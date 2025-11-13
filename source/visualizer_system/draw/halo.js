@@ -12,6 +12,22 @@ const T0 = 6;
 const TT = 28;
 const BASE_R = 0.28;
 
+// Earth texture loading (resolve relative to the module or via runtime URL)
+const EARTH_ASSET_PATH = "visualizer_system/draw/visualizer-assets/halo/earth.png";
+const fallbackEarthUrl = new URL("./visualizer-assets/halo/earth.png", import.meta.url).href;
+const hasChromeRuntimeUrl =
+  typeof chrome !== "undefined" &&
+  chrome &&
+  chrome.runtime &&
+  typeof chrome.runtime.getURL === "function";
+const earthImgSrc = hasChromeRuntimeUrl ? chrome.runtime.getURL(EARTH_ASSET_PATH) : fallbackEarthUrl;
+
+const earthImg = new Image();
+let earthReady = false;
+earthImg.onload = () => { earthReady = true; };
+earthImg.onerror = (err) => console.warn("Failed to load halo earth texture:", err);
+earthImg.src = earthImgSrc;
+
 const clamp = (value, min, max) => {
   const lower = Math.min(min, max);
   const upper = Math.max(min, max);
@@ -90,7 +106,7 @@ function drawBase(ctx, cx, cy, radius, maxRadius, energy = 0) {
 }
 
 export function drawHalo(analyser, ctx, view = {}) {
-  if (!analyser || !ctx) return () => {};
+  if (!analyser || !ctx) return () => { };
 
   if (typeof analyser.smoothingTimeConstant === "number") {
     analyser.smoothingTimeConstant = 0;
@@ -284,6 +300,25 @@ export function drawHalo(analyser, ctx, view = {}) {
       ctx.beginPath();
       ctx.arc(centerX, centerY, baseRadius * 0.9, 0, TAU);
       ctx.stroke();
+      ctx.restore();
+    }
+
+    if (earthReady) {
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over"; // draw normally, above inner glow
+
+      // Earth size relative to radius — adjustment needed
+      const earthRadius = baseRadius * 1.25;
+      const size = earthRadius * 2;
+
+      ctx.drawImage(
+        earthImg,
+        centerX - earthRadius,
+        centerY - earthRadius,
+        size,
+        size
+      );
+
       ctx.restore();
     }
   };
