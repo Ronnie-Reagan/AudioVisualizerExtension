@@ -173,13 +173,14 @@ function createLightField() {
   return { lights, colors };
 }
 
-export function drawLightRoom(analyser, ctx, view = {}) {
-  if (!analyser || !ctx) return () => {};
-  const canvas = ctx.canvas;
+export function drawLightRoom(analyser, canvas, view = {}, fallbackCtx = null) {
+  if (!analyser || !canvas) return null;
   const gl = getGlContext(canvas);
   if (!gl) {
-    renderGlMissingMessage(ctx);
-    return () => {};
+    if (fallbackCtx) {
+      renderGlMissingMessage(fallbackCtx);
+    }
+    return null;
   }
 
   const resources = createGlResources(gl);
@@ -238,7 +239,12 @@ export function drawLightRoom(analyser, ctx, view = {}) {
   };
 
   render();
-  return createAnimationLoop(render);
+  const stopLoop = createAnimationLoop(render);
+  return () => {
+    stopLoop();
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  };
 }
 
 function getGlContext(canvas) {

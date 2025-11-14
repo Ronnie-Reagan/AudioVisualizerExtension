@@ -349,7 +349,11 @@ function ensurePane(paneId) {
   element.tabIndex = 0;
 
   const canvas = document.createElement("canvas");
-  element.appendChild(canvas);
+  canvas.className = "pane-canvas pane-surface-2d";
+  const glCanvas = document.createElement("canvas");
+  glCanvas.className = "pane-canvas pane-surface-gl";
+  glCanvas.hidden = true;
+  element.append(canvas, glCanvas);
 
   const controls = document.createElement("div");
   controls.className = "pane-controls";
@@ -483,13 +487,17 @@ function ensurePane(paneId) {
     removePane(paneId);
   });
 
-  const ctx = registerCanvas(paneId, canvas);
+  const ctx = registerCanvas(paneId, canvas, glCanvas);
   const resizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const { width, height } = entry.contentRect;
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.floor(width * dpr));
-      canvas.height = Math.max(1, Math.floor(height * dpr));
+      const pixelWidth = Math.max(1, Math.floor(width * dpr));
+      const pixelHeight = Math.max(1, Math.floor(height * dpr));
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      glCanvas.width = pixelWidth;
+      glCanvas.height = pixelHeight;
       ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
   });
@@ -499,6 +507,7 @@ function ensurePane(paneId) {
     id: paneId,
     element,
     canvas,
+    glCanvas,
     ctx,
     controls: {
       modeButton,

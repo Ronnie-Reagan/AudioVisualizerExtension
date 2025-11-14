@@ -1,5 +1,5 @@
 import { audioCtx, source } from "./context.js";
-import { getCanvasContext, clearCanvas } from "../shared/canvas.js";
+import { getCanvasContext, clearCanvas, getGlCanvas, setCanvasSurface } from "../shared/canvas.js";
 import { drawSpectrum } from "../draw/spectrum.js";
 import { drawSpectrogram } from "../draw/spectrogram.js";
 import { drawXY } from "../draw/xy.js";
@@ -170,6 +170,7 @@ function startPane(paneId) {
   if (!source) {
     state.needsStart = true;
     clearCanvas(paneId);
+    setCanvasSurface(paneId, "2d");
     return;
   }
 
@@ -182,18 +183,28 @@ function startPane(paneId) {
   let disconnectFns = [];
 
   if (modeName === "spectrum") {
+    setCanvasSurface(paneId, "2d");
     const analyser = createAnalyser();
     cancelLoop = drawSpectrum(analyser, ctx, view.spectrum);
     disconnectFns = [() => disconnectSafe(source, analyser)];
   } else if (modeName === "halo") {
+    setCanvasSurface(paneId, "2d");
     const analyser = createAnalyser();
     cancelLoop = drawHalo(analyser, ctx, view.halo);
     disconnectFns = [() => disconnectSafe(source, analyser)];
   } else if (modeName === "lightroom") {
+    setCanvasSurface(paneId, "gl");
+    const glCanvas = getGlCanvas(paneId);
     const analyser = createAnalyser();
-    cancelLoop = drawLightRoom(analyser, ctx, view.lightroom);
-    disconnectFns = [() => disconnectSafe(source, analyser)];
+    cancelLoop = glCanvas ? drawLightRoom(analyser, glCanvas, view.lightroom, ctx) : null;
+    if (cancelLoop) {
+      disconnectFns = [() => disconnectSafe(source, analyser)];
+    } else {
+      disconnectSafe(source, analyser);
+      setCanvasSurface(paneId, "2d");
+    }
   } else if (modeName === "xy") {
+    setCanvasSurface(paneId, "2d");
     const { splitter, analyserL, analyserR } = createStereoAnalysers();
     cancelLoop = drawXY(analyserL, analyserR, ctx, view.xy);
     disconnectFns = [
@@ -202,10 +213,12 @@ function startPane(paneId) {
       () => disconnectSafe(source, splitter),
     ];
   } else if (modeName === "spectrogram") {
+    setCanvasSurface(paneId, "2d");
     const analyser = createAnalyser();
     cancelLoop = drawSpectrogram(analyser, ctx, view.spectrogram);
     disconnectFns = [() => disconnectSafe(source, analyser)];
   } else {
+    setCanvasSurface(paneId, "2d");
     const analyser = createAnalyser();
     cancelLoop = drawPCM(analyser, ctx, view.pcm);
     disconnectFns = [() => disconnectSafe(source, analyser)];
