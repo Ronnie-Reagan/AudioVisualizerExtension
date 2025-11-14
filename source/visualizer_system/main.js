@@ -441,6 +441,11 @@ function ensurePane(paneId) {
   modeButton.dataset.action = "mode";
   toolbar.appendChild(modeButton);
 
+  const modeBadge = document.createElement("span");
+  modeBadge.className = "pane-mode-flair";
+  modeBadge.textContent = "—";
+  toolbar.appendChild(modeBadge);
+
   const closeButton = document.createElement("button");
   closeButton.dataset.action = "close";
   closeButton.textContent = "×";
@@ -497,6 +502,7 @@ function ensurePane(paneId) {
     ctx,
     controls: {
       modeButton,
+      modeBadge,
       closeButton,
       dock: controlDock,
       viewButtons: {
@@ -688,6 +694,20 @@ function formatModeName(name) {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+function formatModeSummary(modeName, view) {
+  if (!view) return "";
+  if (modeName === "lightroom") {
+    const orbit = (view.orbit ?? 0).toFixed(2);
+    const elevation = Math.round(Math.min(1, Math.max(0, view.elevation ?? 0)) * 100);
+    const exposure = (view.exposure ?? 1).toFixed(2);
+    return `Orbit ${orbit} · Elev ${elevation}% · Exp ${exposure}`;
+  }
+  if ("zoomX" in view) {
+    return `Zoom ×${(view.zoomX ?? 1).toFixed(2)}`;
+  }
+  return "";
+}
+
 function handlePaneCommand(paneId, command) {
   if (!paneRegistry.has(paneId) || !command) return;
   const modeName = getModeName(paneId);
@@ -735,6 +755,13 @@ function scheduleControlsHide(delay = 160) {
 function adjustPaneZoom(paneId, modeName, delta) {
   if (!delta) return;
   const factor = delta > 0 ? 1.25 : 1 / 1.25;
+  if (modeName === "lightroom") {
+    updateViewState(paneId, modeName, (view) => {
+      view.exposure = (view.exposure ?? 1) * (delta > 0 ? 1.1 : 1 / 1.1);
+    });
+    refreshPaneViewLabels(paneId);
+    return;
+  }
   updateViewState(paneId, modeName, (view) => {
     if ("zoomX" in view) {
       view.zoomX *= factor;
@@ -750,6 +777,23 @@ function adjustPaneZoom(paneId, modeName, delta) {
 function adjustPanePan(paneId, modeName, axis, delta) {
   if (!axis) return;
   const step = 0.08 * delta;
+  if (modeName === "lightroom") {
+    updateViewState(paneId, modeName, (view) => {
+      if (axis === "center") {
+        view.orbit = 0.3;
+        view.elevation = 0.45;
+        return;
+      }
+      if (axis === "x") {
+        view.orbit += step * Math.PI;
+      }
+      if (axis === "y") {
+        view.elevation += step;
+      }
+    });
+    refreshPaneViewLabels(paneId);
+    return;
+  }
   updateViewState(paneId, modeName, (view) => {
     if (axis === "center") {
       if ("offsetX" in view) view.offsetX = 0;
@@ -810,6 +854,7 @@ function refreshPaneViewLabels(paneId) {
   const pane = paneRegistry.get(paneId);
   const view = getViewState(paneId);
   if (!pane || !view) return;
+  const modeName = getModeName(paneId);
 
   const xy = view.xy;
   if (xy && pane.controls?.xyRows) {
@@ -824,6 +869,10 @@ function refreshPaneViewLabels(paneId) {
       if (!row?.chip) continue;
       row.chip.textContent = descriptors[key] ?? row.chip.textContent;
     }
+  }
+
+  if (pane.controls?.modeBadge && view[modeName]) {
+    pane.controls.modeBadge.textContent = formatModeSummary(modeName, view[modeName]);
   }
 }
 

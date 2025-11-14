@@ -1,4 +1,6 @@
 import { createAnimationLoop } from "../shared/animationLoop.js";
+import { clamp, lerp } from "../shared/math.js";
+import { ensureFrequencyBuffers, resampleLogarithmic } from "../shared/sampling.js";
 
 const TAU = Math.PI * 2;
 const LOG_MAX = Math.log1p(255);
@@ -33,14 +35,11 @@ const AMP_LUT_SCALE = AMP_LUT_SIZE - 1;
 const AMP_POW_090 = new Float32Array(AMP_LUT_SIZE);
 const AMP_POW_085 = new Float32Array(AMP_LUT_SIZE);
 
-const clamp = (value, min, max) => {
-  const lower = Math.min(min, max);
-  const upper = Math.max(min, max);
-  const numeric = Number.isFinite(value) ? value : lower;
-  return Math.min(Math.max(numeric, lower), upper);
-};
-
-const lerp = (a, b, t) => a + (b - a) * t;
+export function getHaloBinAngle(binIndex) {
+  if (!Number.isFinite(binIndex)) return BIN_BASE_ANGLES[0];
+  const clamped = Math.max(0, Math.min(BINS_OUT - 1, Math.round(binIndex)));
+  return BIN_BASE_ANGLES[clamped];
+}
 
 for (let i = 0; i < BINS_OUT; i++) {
   if (BINS_OUT <= 1) {
@@ -73,54 +72,13 @@ const hasChromeRuntimeUrl =
   typeof chrome.runtime.getURL === "function";
 const earthImgSrc = hasChromeRuntimeUrl ? chrome.runtime.getURL(EARTH_ASSET_PATH) : fallbackEarthUrl;
 
-const earthImg = new Image();
-let earthReady = false;
-earthImg.onload = () => { earthReady = true; };
-earthImg.onerror = (err) => console.warn("Failed to load halo earth texture:", err);
-earthImg.src = earthImgSrc;
-
-function ensureFrequencyBuffers(analyser, freqData, normData) {
-  const targetLength = analyser.frequencyBinCount || 0;
-  if (targetLength === freqData.length) {
-    return { freqData, normData, changed: false };
-  }
-  const nextFreq = new Uint8Array(targetLength || 2048);
-  const nextNorm = new Float32Array(nextFreq.length);
-  return { freqData: nextFreq, normData: nextNorm, changed: true };
-}
-
-function resampleLog(input, output) {
-  const N = input.length;
-  const O = output.length;
-  for (let i = 0; i < O; i++) {
-    const t = i / (O - 1);
-    const src = Math.pow(t, 3.2) * (N - 1); // skews toward highs
-    const idx = Math.floor(src);
-    const frac = src - idx;
-    const next = Math.min(idx + 1, N - 1);
-    output[i] = input[idx] * (1 - frac) + input[next] * frac;
-  }
-}
-
-function resampleLinear(input, output) {
-  const inputLength = input.length;
-  const outputLength = output.length;
-  if (inputLength === 0 || outputLength === 0) {
-    output.fill(0);
-    return;
-  }
-  if (outputLength === 1) {
-    output[0] = input[0];
-    return;
-  }
-  const step = (inputLength - 1) / (outputLength - 1);
-  for (let i = 0; i < outputLength; i++) {
-    const position = i * step;
-    const index = Math.floor(position);
-    const frac = position - index;
-    const nextIndex = Math.min(index + 1, inputLength - 1);
-    output[i] = lerp(input[index], input[nextIndex], frac);
-  }
+const hasImageConstructor = typeof Image === "function";
+const earthImg = hasImageConstructor ? new Image() : null;
+let earthReady = !hasImageConstructor;
+if (hasImageConstructor && earthImg) {
+  earthImg.onload = () => { earthReady = true; };
+  earthImg.onerror = (err) => console.warn("Failed to load halo earth texture:", err);
+  earthImg.src = earthImgSrc;
 }
 
 function drawBase(ctx, cx, cy, radius, maxRadius, energy = 0) {
@@ -293,7 +251,7 @@ export function drawHalo(analyser, ctx, view = {}) {
       }
     }
 
-    resampleLog(normData, resampled);
+    resampleLogarithmic(normData, resampled, 3.2);
 
     let maxAmplitude = 0;
     if (!smoothingInitialized) {
@@ -469,7 +427,7 @@ export function drawHalo(analyser, ctx, view = {}) {
       ctx.restore();
     }
 
-    if (earthReady) {
+    if (earthReady && earthImg) {
       ctx.save();
       ctx.globalCompositeOperation = "source-over";
       const earthRadius = baseRadius * 1.25;

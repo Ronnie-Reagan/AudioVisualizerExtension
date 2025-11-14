@@ -1,9 +1,6 @@
 import { createAnimationLoop } from "../shared/animationLoop.js";
-
-const clamp = (value, min, max) => {
-  const numeric = Number.isFinite(value) ? value : min;
-  return Math.min(Math.max(numeric, min), max);
-};
+import { clamp } from "../shared/math.js";
+import { computeVisibleSpan, computeBaseline } from "../shared/view.js";
 
 export function drawSpectrum(analyser, ctx, view) {
   if (!analyser || !ctx) return () => {};
@@ -23,16 +20,15 @@ export function drawSpectrum(analyser, ctx, view) {
     const offsetX = clamp(view?.offsetX ?? 0, 0, 1);
     const offsetY = clamp(view?.offsetY ?? 0, -1, 1);
 
-    const visibleBins = Math.max(16, Math.floor(data.length / zoomX));
-    const maxStart = Math.max(0, data.length - visibleBins);
-    const startIndex = Math.max(0, Math.min(maxStart, Math.round(offsetX * maxStart)));
-    const baselineOffset = offsetY * h * 0.45;
+    const visible = computeVisibleSpan(data.length, zoomX, offsetX, 16);
+    const visibleBins = visible.span;
+    const startIndex = visible.start;
+    const baseline = computeBaseline(h, offsetY);
     const barWidth = Math.max(1, w / visibleBins);
     for (let i = 0; i < visibleBins; i++) {
       const datum = data[startIndex + i] / 255;
       const barHeight = Math.min(h, h * datum * zoomY);
       const x = i * barWidth;
-      const baseline = clamp(h - baselineOffset, -h, h * 2);
       const top = clamp(baseline - barHeight, -h, h);
       const height = Math.max(1, baseline - top);
       const y = top;

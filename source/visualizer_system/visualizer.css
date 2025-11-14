@@ -405,6 +405,19 @@ body[data-resize-orientation="row"] * {
   outline-offset: 2px;
 }
 
+.pane-mode-flair {
+  pointer-events: none;
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  background: rgba(17, 25, 40, 0.5);
+  color: rgba(200, 222, 255, 0.75);
+  border: 1px solid rgba(0, 255, 178, 0.18);
+  text-transform: uppercase;
+}
+
 .pane-control-dock {
   position: absolute;
   left: 16px;

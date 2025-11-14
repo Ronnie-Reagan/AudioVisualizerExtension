@@ -5,8 +5,9 @@ import { drawSpectrogram } from "../draw/spectrogram.js";
 import { drawXY } from "../draw/xy.js";
 import { drawPCM } from "../draw/pcm.js";
 import { drawHalo } from "../draw/halo.js";
+import { drawLightRoom } from "../draw/lightroom.js";
 
-export const modes = ["spectrum", "pcm", "spectrogram", "halo", "xy"];
+export const modes = ["spectrum", "pcm", "spectrogram", "halo", "lightroom", "xy"];
 
 const paneState = new Map();
 
@@ -23,6 +24,12 @@ const defaultViewTemplate = Object.freeze({
     binSpin: 0,
     earthRotation: 0,
     earthSpin: 0,
+  }),
+  lightroom: Object.freeze({
+    orbit: 0.3,
+    elevation: 0.45,
+    exposure: 1.3,
+    spin: 0,
   }),
   xy: Object.freeze({
     scale: 1,
@@ -42,6 +49,7 @@ function createDefaultViewState() {
     pcm: { ...defaultViewTemplate.pcm },
     spectrogram: { ...defaultViewTemplate.spectrogram },
     halo: { ...defaultViewTemplate.halo },
+    lightroom: { ...defaultViewTemplate.lightroom },
     xy: { ...defaultViewTemplate.xy },
   };
 }
@@ -181,6 +189,10 @@ function startPane(paneId) {
     const analyser = createAnalyser();
     cancelLoop = drawHalo(analyser, ctx, view.halo);
     disconnectFns = [() => disconnectSafe(source, analyser)];
+  } else if (modeName === "lightroom") {
+    const analyser = createAnalyser();
+    cancelLoop = drawLightRoom(analyser, ctx, view.lightroom);
+    disconnectFns = [() => disconnectSafe(source, analyser)];
   } else if (modeName === "xy") {
     const { splitter, analyserL, analyserR } = createStereoAnalysers();
     cancelLoop = drawXY(analyserL, analyserR, ctx, view.xy);
@@ -276,6 +288,11 @@ function clampViewForMode(modeName, target) {
     target.binSpin = clampNumber(target.binSpin, -HALO_SPIN_LIMIT, HALO_SPIN_LIMIT);
     target.earthRotation = clampNumber(target.earthRotation, -HALO_ROTATION_LIMIT, HALO_ROTATION_LIMIT);
     target.earthSpin = clampNumber(target.earthSpin, -HALO_SPIN_LIMIT, HALO_SPIN_LIMIT);
+  } else if (modeName === "lightroom") {
+    target.orbit = clampNumber(target.orbit, -Math.PI * 4, Math.PI * 4);
+    target.elevation = clampNumber(target.elevation, 0, 1);
+    target.exposure = clampNumber(target.exposure, 0.1, 4);
+    target.spin = clampNumber(target.spin ?? 0, -1, 1);
   } else if (modeName === "spectrogram") {
     target.zoomY = clampNumber(target.zoomY, 0.5, 6);
     target.intensity = clampNumber(target.intensity, 0.2, 4.5);

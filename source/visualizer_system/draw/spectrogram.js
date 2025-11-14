@@ -1,9 +1,6 @@
 import { createAnimationLoop } from "../shared/animationLoop.js";
-
-const clamp = (value, min, max) => {
-  const numeric = Number.isFinite(value) ? value : min;
-  return Math.min(Math.max(numeric, min), max);
-};
+import { clamp } from "../shared/math.js";
+import { computeVisibleSpan } from "../shared/view.js";
 
 export function drawSpectrogram(analyser, ctx, view) {
   if (!analyser || !ctx) return () => {};
@@ -39,9 +36,9 @@ export function drawSpectrogram(analyser, ctx, view) {
       ctx.fillRect(w - shift, 0, shift, h);
     }
 
-    const visibleBins = Math.max(8, Math.floor(data.length / zoomY));
-    const maxStart = Math.max(0, data.length - visibleBins);
-    const startIndex = Math.max(0, Math.min(maxStart, Math.round(offsetY * maxStart)));
+    const visible = computeVisibleSpan(data.length, zoomY, offsetY, 8);
+    const visibleBins = visible.span;
+    const startIndex = visible.start;
     const columnWidth = Math.min(shift, w);
     const baseX = w - columnWidth;
 

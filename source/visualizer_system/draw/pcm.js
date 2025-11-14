@@ -1,9 +1,6 @@
 import { createAnimationLoop } from "../shared/animationLoop.js";
-
-const clamp = (value, min, max) => {
-  const numeric = Number.isFinite(value) ? value : min;
-  return Math.min(Math.max(numeric, min), max);
-};
+import { clamp } from "../shared/math.js";
+import { computeVisibleSpan } from "../shared/view.js";
 
 export function drawPCM(analyser, ctx, view) {
   if (!analyser || !ctx) return () => {};
@@ -25,9 +22,9 @@ export function drawPCM(analyser, ctx, view) {
     const offsetX = clamp(view?.offsetX ?? 0, 0, 1);
     const offsetY = clamp(view?.offsetY ?? 0, -1, 1);
 
-    const visibleSamples = Math.min(w , Math.floor(data.length / zoomX));
-    const maxStart = Math.max(0, data.length - visibleSamples);
-    const startIndex = Math.max(0, Math.min(maxStart, Math.round(offsetX * maxStart)));
+    const visible = computeVisibleSpan(data.length, zoomX, offsetX, Math.min(w, data.length));
+    const visibleSamples = visible.span;
+    const startIndex = visible.start;
     const step = w / visibleSamples;
     const verticalShift = offsetY * midY;
 

@@ -1,9 +1,5 @@
 import { createAnimationLoop } from "../shared/animationLoop.js";
-
-const clamp = (value, min, max) => {
-  const numeric = Number.isFinite(value) ? value : min;
-  return Math.min(Math.max(numeric, min), max);
-};
+import { clamp } from "../shared/math.js";
 
 export function drawXY(analyserL, analyserR, ctx, view) {
   if (!analyserL || !analyserR || !ctx) return () => {};

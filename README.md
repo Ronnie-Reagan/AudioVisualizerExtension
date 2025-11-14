@@ -28,6 +28,11 @@ Supports various modes such as
    - Crudely implemented and **Under Construction** view to emulate a solar storm or a 'earth' traveling through space
    - Very Early Implementation; Not representative of final mode.
 
+- Light Room (GL)
+   - Experimental WebGL/GLSL ray-marched light installation mapped to live frequency bins
+   - Each light blooms and fades purely from amplitude, simulating a volumetric club/room scene.
+   - UNTESTED DUE TO HARDWARE LIMITATIONS
+
 Expect more modes to be added as time goes on; try not to be upset if your favourite mode is removed as we intend to make the modes user-scriptable/moddable via Extension-Storage (Under Review for feasibility - no promises)
 
 
@@ -62,6 +67,14 @@ Expect more modes to be added as time goes on; try not to be upset if your favou
 - The visualizer runs entirely client-side using the Web Audio API and Canvas 2D.
 - Each mode (spectrum, waveform, spectrogram) is drawn on a per-frame loop using requestAnimationFrame.
 - Communication with the active tab uses `chrome.tabCapture`.
+
+## Testing
+
+Pure logic utilities now have automated coverage so regressions are caught before shipping builds. Run:
+
+```bash
+npm test
+```
 
 ---
 
